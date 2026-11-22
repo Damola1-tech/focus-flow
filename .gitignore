@@ -1,0 +1,4 @@
+dist/all.js
+__pycache__/
+*.pyc
+.DS_Store

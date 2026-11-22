@@ -1,0 +1,22 @@
+#!/usr/bin/env python3
+"""Build Focus Flow: joins src/*.js and src/style.css into dist/ files and the installable pwa/ folder."""
+import glob, os, subprocess, shutil, json
+root = os.path.dirname(os.path.abspath(__file__)); os.chdir(root)
+js = ''.join(open(f).read() + ('\n' if not open(f).read().endswith('\n') else '') for f in sorted(glob.glob('src/*.js')))
+css = open('src/style.css').read()
+os.makedirs('dist', exist_ok=True)
+open('dist/all.js', 'w').write(js)  # kept only for the syntax check
+r = subprocess.run(['node', '--check', 'dist/all.js'], capture_output=True, text=True)
+if r.returncode: raise SystemExit('Syntax error:\n' + r.stderr)
+fonts = '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap">\n'
+body = '<div id="app"></div>\n<div id="overlay"></div>\n<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>\n'
+core = '<title>Focus Flow</title>\n' + fonts + '<style>\n' + css + '\n</style>\n' + body + '<script>\n' + js.replace('</script>', '<\\/script>') + '\n</script>\n'
+# page.html: for publishing as a Claude artifact (the platform adds the document skeleton)
+open('dist/page.html', 'w').write(core)
+head = '<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#3F5EFB">'
+# FocusFlow.html: a complete standalone page (this-device-only mode)
+open('dist/FocusFlow.html', 'w').write(head + '<title>Focus Flow</title></head><body>\n' + core.replace('<title>Focus Flow</title>\n', '') + '</body></html>\n')
+# pwa/index.html: same page with manifest and offline support, for hosting over https
+pwa = head + '<link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon-192.png"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Focus Flow"><title>Focus Flow</title></head><body>\n' + core.replace('<title>Focus Flow</title>\n', '') + "<script>if('serviceWorker' in navigator&&location.protocol.indexOf('http')===0){navigator.serviceWorker.register('sw.js').catch(function(){})}</script></body></html>\n"
+open('pwa/index.html', 'w').write(pwa)
+print('built dist/page.html, dist/FocusFlow.html, pwa/index.html')

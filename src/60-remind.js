@@ -1,0 +1,40 @@
+/* ---------- reminders that work while the page is open ---------- */
+function inQuiet(s) {
+  var n = nowMin(), a = toMin(s.quietFrom || '22:00'), b = toMin(s.quietTo || '07:00');
+  return a === b ? false : (a < b ? (n >= a && n < b) : (n >= a || n < b));
+}
+function remindTick() {
+  var d = D(); if (!d) return;
+  var s = d.settings, date = todayStr(), nm = nowMin(); d.sn = d.sn || {};
+  if (d.snDay !== date) { d.sn = {}; d.snDay = date; save(); }
+  if (inQuiet(s) || U.flow === 'checkin') return;
+  if (s.remindStart > 0) {
+    tasks().forEach(function (t) {
+      if (t.date !== date || t.status !== 'todo' || !t.time) return;
+      var st = toMin(t.time), key = 's' + t.id + t.time, late = 'l' + key;
+      if (!d.sn[key] && nm >= st - s.remindStart && nm < st) { d.sn[key] = 1; save(); notify('Starting soon: ' + t.title + ' at ' + fmtTime12(t.time) + '.'); }
+      else if (!d.sn[late] && nm >= st + 10 && nm < st + 45 && !(d.active && d.active.taskId === t.id)) { d.sn[late] = 1; save(); notify(t.title + ' was planned for ' + fmtTime12(t.time) + '. Start it now, or move it?'); }
+    });
+  }
+  if (s.checkinEvery > 0 && nm >= 480) {
+    var slot = Math.floor(nm / s.checkinEvery), key = 'c' + slot;
+    if (!d.sn[key] && nm - slot * s.checkinEvery < 5) {
+      d.sn[key] = 1;
+      var a = d.active, t = a && taskById(a.taskId), nxt = nextTask();
+      if (a && t) { save(); notify('Check-in: how is "' + t.title + '" going? ' + fmtDur(Math.max(1, activeElapsed(a) / 60)) + ' so far.'); }
+      else if (nxt) { save(); notify('Check-in: next on your list is "' + nxt.title + '". Ready to start?'); }
+      else save();
+    }
+  }
+}
+/* make notify() keep a short list for the Reminders banner and tab title */
+(function () {
+  var base = notify;
+  notify = function (text) {
+    U.alerts = (U.alerts || []).concat([{ text: text, at: Date.now() }]).slice(-5);
+    try { document.title = '(' + U.alerts.length + ') Focus Flow'; } catch (e) { }
+    base(text);
+    if (U.view === 'home' && !U.overlay && !U.flow) { try { render(); } catch (e) { } }
+  };
+})();
+window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); U.installPrompt = e; if (U.view === 'settings') render(); });

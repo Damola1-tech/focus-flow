@@ -1,0 +1,31 @@
+import asyncio, sys, json; sys.path.insert(0, __import__('os').path.dirname(__file__))
+from harness import *
+from test_signup import setup, ok, R, FILE
+async def main():
+    async with async_playwright() as pw:
+        b = await launch(pw); w = World()
+        p = await w.new_page(b, 'u1', 'Damola', (390, 844)); await setup(p)
+        await p.evaluate("U.flow=null; D().checkins[todayStr()]={moods:['calm'],energy:'medium',focus:'medium'}; addTask({title:'Write report', est:60, date: todayStr(), time:'', priority:'high'}); addTask({title:'Call the bank', est:20, date: todayStr(), time:'15:00', fixed:true}); D().travel.push({id:'x',place:'Abuja',from:addDays(todayStr(),1),to:addDays(todayStr(),3),maxHours:4}); render()")
+        await p.screenshot(path='/tmp/m_home.png', full_page=True)
+        await p.click('.tabbar [data-a=more]'); await p.wait_for_timeout(200); await p.screenshot(path='/tmp/m_more.png')
+        await p.click('.sheet [data-v=settings]'); await p.wait_for_timeout(300); await p.screenshot(path='/tmp/m_settings.png', full_page=True)
+        await p.click('.tabbar [data-v=calendar]'); await p.wait_for_timeout(300); await p.screenshot(path='/tmp/m_cal.png', full_page=True)
+        await p.click('.tabbar [data-v=coach]'); await p.wait_for_timeout(300); await p.screenshot(path='/tmp/m_coach.png')
+        print(p.errs)
+        # local mode
+        q = await w.new_page(b, cloud=False, viewport=(1100, 800)); await q.goto(FILE); await q.wait_for_timeout(800)
+        t = await q.inner_text('body'); ok('loc1 local wizard', 'Create your profile' in t, t[:100])
+        await q.fill('#wName', 'Tunde'); await q.click('text=Continue'); await q.click('text=Finish setup'); await q.wait_for_timeout(500)
+        await q.evaluate("U.flow=null; render()")
+        ok('loc2 no coach tab without AI', await q.locator('.side [data-v=coach]').count() == 0)
+        ok('loc3 calendar tab present', await q.locator('.side [data-v=calendar]').count() == 1)
+        await q.click('.side [data-v=tasks]'); await q.wait_for_timeout(200)
+        print(await q.eval_on_selector_all('main textarea, main input', 'els=>els.map(e=>e.id)'))
+        await q.evaluate("parseCapture('call the bank tomorrow at 3pm for 20 minutes').forEach(function(x){ console.log(JSON.stringify(x)); })")
+        print(q.errs)
+        # shared plan, local mode, invite new person (previous fix)
+        await q.click('.side [data-v=shared]'); await q.click('main [data-a=spNew]'); await q.fill('#spTitle', 'Family dinner'); await q.fill('#spPeople', 'Bisi, Kemi'); await q.click('.sheet button[type=submit]'); await q.wait_for_timeout(300)
+        ok('loc4 local invites create profiles', await q.evaluate("S.profiles.length===3 && S.shared[0].members.length===3"))
+        print(q.errs); await b.close()
+    print('\n'.join(R))
+if __name__ == '__main__': asyncio.run(main())
