@@ -669,6 +669,9 @@ function viewSettings() {
     '<h2 style="margin-top:8px">Reminders</h2>' +
     '<div class="row"><div class="field grow"><label for="sFrom">Evening planning reminder from</label><input id="sFrom" type="time" value="' + s.planFrom + '"></div><div class="field grow"><label for="sTo">until</label><input id="sTo" type="time" value="' + s.planTo + '"></div></div>' +
     '<label class="check"><input id="sApp" type="checkbox"' + (s.appNotify ? ' checked' : '') + '> App notifications (while Focus Flow is open)</label>' +
+    '<label class="check"><input id="sSound" type="checkbox"' + (s.sound !== false ? ' checked' : '') + '> Play a sound with reminders</label>' +
+    '<label class="check"><input id="sVib" type="checkbox"' + (s.vibrate !== false ? ' checked' : '') + '> Vibrate on phones</label>' +
+    '<div class="row"><button type="button" class="btn sm" data-a="testSound">Test sound</button></div>' +
     '<div class="row"><div class="field grow"><label for="sRs">Remind me before a task starts</label><select id="sRs">' + [[0, 'Off'], [5, '5 minutes before'], [10, '10 minutes before'], [15, '15 minutes before'], [30, '30 minutes before']].map(function (o) { return '<option value="' + o[0] + '"' + (s.remindStart === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
     '<div class="field grow"><label for="sCe">Check in on my day</label><select id="sCe">' + [[0, 'Off'], [60, 'Every hour'], [120, 'Every 2 hours'], [180, 'Every 3 hours']].map(function (o) { return '<option value="' + o[0] + '"' + (s.checkinEvery === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div></div>' +
     '<div class="row"><div class="field grow"><label for="sQf">Quiet hours from</label><input id="sQf" type="time" value="' + s.quietFrom + '"></div><div class="field grow"><label for="sQt">until</label><input id="sQt" type="time" value="' + s.quietTo + '"></div></div>' +
@@ -1151,6 +1154,7 @@ var A = {
     el.setAttribute('aria-pressed', 'true'); var b = $('#rotaB'); if (b) b.hidden = el.dataset.val !== '2';
   },
   delTrip: function (el) { D().travel = D().travel.filter(function (t) { return t.id !== el.dataset.id; }); save(); render(); },
+  testSound: function () { chime(true); toast('Reminder sound test'); },
   askNotifyNow: function () { try { Notification.requestPermission().then(function () { render(); }); } catch (e) { toast('Notifications are not available here'); } },
   installApp: function () { var e = U.installPrompt; if (!e) return; U.installPrompt = null; try { e.prompt(); } catch (x) { } render(); },
   pickProfile: function (el) { S.activeId = el.dataset.id; U.picker = false; U.view = 'home'; U.plan = null; save(); applyTheme(); maybeCheckin(); render(); },
@@ -1345,7 +1349,7 @@ var F = {
     if (s.rotaWeeks === 2) { var tw = pressed(f, 'thisweek')[0] || 'A'; s.rotaAnchor = tw === 'A' ? weekStart(todayStr()) : addDays(weekStart(todayStr()), -7); }
     else s.rotaAnchor = weekStart(todayStr());
     s.hasShift = anyShift(s);
-    s.appNotify = checked(f, 'sApp'); s.emailNotify = checked(f, 'sEmail');
+    s.appNotify = checked(f, 'sApp'); s.sound = checked(f, 'sSound'); s.vibrate = checked(f, 'sVib'); s.emailNotify = checked(f, 'sEmail');
     s.remindStart = +val(f, 'sRs') || 0; s.checkinEvery = +val(f, 'sCe') || 0; s.quietFrom = val(f, 'sQf') || s.quietFrom; s.quietTo = val(f, 'sQt') || s.quietTo;
     if (f.querySelector('#sAi')) s.ai = checked(f, 'sAi');
     save(); applyTheme(); if (s.appNotify) askNotify(); toast('Settings saved'); render();

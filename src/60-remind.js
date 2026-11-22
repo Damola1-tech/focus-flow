@@ -1,4 +1,23 @@
 /* ---------- reminders that work while the page is open ---------- */
+var AUDIO = null;
+function audioCtx() {
+  try { var C = window.AudioContext || window.webkitAudioContext; if (!C) return null; if (!AUDIO) AUDIO = new C(); if (AUDIO.state === 'suspended') AUDIO.resume(); return AUDIO; } catch (e) { return null; }
+}
+/* browsers only allow sound after a tap, so unlock on the first one */
+['pointerdown', 'keydown', 'touchstart'].forEach(function (ev) { window.addEventListener(ev, function () { audioCtx(); }, { passive: true }); });
+function chime(force) {
+  var d = D(); if (!force && d && d.settings.sound === false) return;
+  var ctx = audioCtx(); if (!ctx) return;
+  try {
+    [[880, 0], [1175, 0.18], [1568, 0.36]].forEach(function (n) {
+      var o = ctx.createOscillator(), g = ctx.createGain(), t = ctx.currentTime + n[1];
+      o.type = 'sine'; o.frequency.value = n[0];
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.3, t + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+      o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + 0.55);
+    });
+  } catch (e) { }
+  try { if (force || !d || d.settings.vibrate !== false) navigator.vibrate && navigator.vibrate([200, 100, 200]); } catch (e) { }
+}
 function inQuiet(s) {
   var n = nowMin(), a = toMin(s.quietFrom || '22:00'), b = toMin(s.quietTo || '07:00');
   return a === b ? false : (a < b ? (n >= a && n < b) : (n >= a || n < b));
@@ -33,7 +52,7 @@ function remindTick() {
   notify = function (text) {
     U.alerts = (U.alerts || []).concat([{ text: text, at: Date.now() }]).slice(-5);
     try { document.title = '(' + U.alerts.length + ') Focus Flow'; } catch (e) { }
-    base(text);
+    base(text); chime();
     if (U.view === 'home' && !U.overlay && !U.flow) { try { render(); } catch (e) { } }
   };
 })();
