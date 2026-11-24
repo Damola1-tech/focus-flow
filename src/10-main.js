@@ -676,7 +676,7 @@ function viewSettings() {
     '<div class="field grow"><label for="sCe">Check in on my day</label><select id="sCe">' + [[0, 'Off'], [60, 'Every hour'], [120, 'Every 2 hours'], [180, 'Every 3 hours']].map(function (o) { return '<option value="' + o[0] + '"' + (s.checkinEvery === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div></div>' +
     '<div class="row"><div class="field grow"><label for="sQf">Quiet hours from</label><input id="sQf" type="time" value="' + s.quietFrom + '"></div><div class="field grow"><label for="sQt">until</label><input id="sQt" type="time" value="' + s.quietTo + '"></div></div>' +
     '<label class="check"><input id="sEmail" type="checkbox"' + (s.emailNotify ? ' checked' : '') + '> Email reminders</label>' +
-    '<span class="small muted">Email reminders are saved as a preference only. Nothing is emailed yet because sending email needs a mail service. App reminders only fire while this page is open.</span>' +
+    (typeof SB !== 'undefined' && SB.on ? '<span class="small muted">Reminders are also sent by the server, so they reach you when Focus Flow is closed: phone alerts (turn them on under Your account below) and email to ' + esc((SB.session && SB.session.user && SB.session.user.email) || 'your sign-in email') + '.</span>' : '<span class="small muted">Email reminders are saved as a preference only. Nothing is emailed in this copy. App reminders only fire while this page is open.</span>') +
     '<div class="row"><span class="small">Browser notifications: <b>' + (ns === 'granted' ? 'allowed' : ns === 'denied' ? 'blocked in this browser' : ns === 'unsupported' ? 'not supported here' : 'not allowed yet') + '</b></span>' + (ns === 'default' ? '<button type="button" class="btn sm" data-a="askNotifyNow">Allow notifications</button>' : '') + '</div>' +
     (AI.available ? '<h2 style="margin-top:8px">AI helper</h2><label class="check"><input id="sAi" type="checkbox"' + (s.ai ? ' checked' : '') + '> Use the AI helper (Coach and "Ask AI to change")</label><span class="small muted">When you ask it something, your tasks for the day, goals and mood check-in are sent to Claude to answer, using your own Claude account. Nothing is sent unless you press a button to ask.</span>' : '') +
     '<button class="btn primary" type="submit">Save settings</button></form>';
@@ -691,7 +691,8 @@ function viewSettings() {
   var install = '<section class="card"><h2>Use it like an app</h2><p class="small muted">On a phone, open this page in your browser, then use the browser menu: Share then Add to Home Screen on iPhone, or the three dots then Install app on Android. It then opens full screen from your home screen.</p>' +
     (U.installPrompt ? '<div class="acts"><button class="btn primary" data-a="installApp">Install Focus Flow</button></div>' : '') + '</section>';
   var account;
-  if (CL.on) {
+  if (typeof SB !== 'undefined' && SB.on) { account = sbAccountCard(); if (!SB.pushAsked) { SB.pushAsked = true; sbPushRefresh(); } }
+  else if (CL.on) {
     account = '<section class="card"><h2>Your account</h2><p class="small">You are signed in through Claude. Your tasks, goals and settings are saved online and follow you to every phone or computer where you open this page.</p>' +
       '<div class="kv small"><span class="muted">Status</span><b>' + esc(CL.status || 'Connected') + '</b></div>' +
       '<div class="acts"><button class="btn" data-a="showBackup">' + (U.backup ? 'Hide backup' : 'Show backup text') + '</button><button class="btn danger" data-a="askDelProfile">Delete my data</button></div>' +
@@ -785,7 +786,7 @@ function viewWizard() {
     '<div class="field"><label for="wEmail">Email (optional, for reminders later)</label><input id="wEmail" type="email" value="' + esc(w.email) + '" placeholder="you@example.com"></div>' +
     '<div class="field"><span class="lbl">Choose your look</span><div class="chips" data-single>' + THEMES.map(swatchHtml(w.color)).join('') + '</div></div>' +
     '<button class="btn primary block" type="submit">Continue</button>' + (S.profiles.length ? '<button type="button" class="btn ghost" data-a="cancelWiz">Back</button>' : '') +
-    '<span class="small muted center">' + (CL.on ? 'You are signed in through Claude. Your tasks are saved online and follow you to your other devices.' : 'No password needed. Your tasks stay in this browser.') + '</span></form></div>';
+    '<span class="small muted center">' + (CL.on ? (typeof SB !== 'undefined' && SB.on ? 'You are signed in. Your tasks are saved online and follow you to your other devices.' : 'You are signed in through Claude. Your tasks are saved online and follow you to your other devices.') : 'No password needed. Your tasks stay in this browser.') + '</span></form></div>';
   var s = newData().settings, days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   return wrap +
     '<form class="card" data-f="wiz2"><div class="row between"><h2>Set up your day</h2><span class="small muted" style="font-weight:600">Step 2 of 2</span></div>' +
@@ -794,7 +795,7 @@ function viewWizard() {
     '<div class="field"><span class="lbl">Work days</span><div class="chips" data-multi>' + days.map(function (n, i) { return chip(n, i >= 1 && i <= 5, 'wd', i); }).join('') + '</div></div>' +
     '<label class="check"><input id="wShift" type="checkbox"> I work a fixed shift</label>' +
     '<div class="row"><div class="field grow"><label for="wSa">Shift starts</label><input id="wSa" type="time" value="08:00"></div><div class="field grow"><label for="wSb">Shift ends</label><input id="wSb" type="time" value="18:00"></div></div>' +
-    '<div class="field"><span class="lbl">Remind me by</span><div class="chips" data-multi>' + chip('App notification', true, 'rem', 'app') + chip('Email', false, 'rem', 'email') + '</div><span class="small muted">Email is saved as a preference only. Nothing is emailed yet.</span></div>' +
+    '<div class="field"><span class="lbl">Remind me by</span><div class="chips" data-multi>' + chip('App notification', true, 'rem', 'app') + chip('Email', false, 'rem', 'email') + '</div><span class="small muted">' + (typeof SB !== 'undefined' && SB.on ? 'Email goes to your sign-in address. You can turn on phone alerts later in Settings.' : 'Email is saved as a preference only. Nothing is emailed yet.') + '</span></div>' +
     '<div class="field"><span class="lbl">Daily message</span><div class="chips" data-single>' + chip('Motivational', true, 'msg', 'motivation') + chip('Bible verse', false, 'msg', 'bible') + chip('None', false, 'msg', 'none') + '</div></div>' +
     '<button class="btn primary block" type="submit">Finish setup</button><button type="button" class="btn ghost" data-a="wizBack">Back</button></form></div>';
 }

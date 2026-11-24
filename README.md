@@ -77,3 +77,11 @@ in-memory database, user, and AI), including two people sharing one plan.
 - Calendar sync with Google, Apple or Outlook
 - Sign-in without Claude (needs a backend such as Supabase)
 - Checked only in desktop Chromium with a simulated Claude. Not yet tried on real phones or with the real AI.
+
+## Sign-in, shared plans and reminders without Claude (Supabase)
+
+Follow [SETUP.md](SETUP.md). It adds email sign-in with a family code, plans shared between phones, and
+reminders by phone alert and email even when the app is closed. Code: `src/35-supabase.js` (client),
+`supabase/schema.sql`, `supabase/cron.sql` and `supabase/functions/reminders/` (server).
+Tests: `python3 tests/test_supabase.py` (runs the app against a pretend server) and
+`node tests/test_reminder_logic.mjs`.

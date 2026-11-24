@@ -8,6 +8,7 @@ async def setup(p, goal='Read more'):
     await p.goto(FILE); await p.wait_for_timeout(1000)
     await p.click('text=Continue'); await p.wait_for_timeout(200)
     await p.click('text=Finish setup'); await p.wait_for_timeout(1500)
+    if await p.locator('text=Skip for now').count(): await p.click('text=Skip for now'); await p.wait_for_timeout(500)
 async def main():
     async with async_playwright() as pw:
         b = await launch(pw); w = World()

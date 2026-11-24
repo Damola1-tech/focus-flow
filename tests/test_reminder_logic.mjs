@@ -1,0 +1,27 @@
+import { dueReminders, localNow, inQuiet, fmt12 } from '../supabase/functions/reminders/logic.js';
+let fails = 0; const ok = (n, c, x) => { console.log((c ? 'PASS ' : 'FAIL ') + n + (c ? '' : ' ' + JSON.stringify(x))); if (!c) fails++; };
+// 08:00 in Lagos (UTC+1) on 24 Nov 2026 is 07:00 UTC
+const at = (h, m) => Date.UTC(2026, 10, 24, h - 1, m);
+const core = (o = {}) => ({ settings: { tz: 'Africa/Lagos', remindStart: 10, quietFrom: '22:00', quietTo: '07:00', ...o }, reminders: [], active: null });
+const task = (o = {}) => ({ id: 't1', title: 'Write report', date: '2026-11-24', time: '09:00', status: 'todo', ...o });
+ok('l1 local time uses the person\'s zone', JSON.stringify(localNow(Date.UTC(2026, 10, 24, 7, 30), 'Africa/Lagos')) === '{"date":"2026-11-24","min":510}', localNow(Date.UTC(2026, 10, 24, 7, 30), 'Africa/Lagos'));
+ok('l2 midnight rolls the date in that zone', localNow(Date.UTC(2026, 10, 24, 23, 30), 'Africa/Lagos').date === '2026-11-25');
+ok('l3 nothing 30 minutes before', dueReminders({ core: core(), tasks: [task()], nowMs: at(8, 30) }).length === 0);
+let r = dueReminders({ core: core(), tasks: [task()], nowMs: at(8, 51) });
+ok('l4 starting-soon inside the 10 minute window', r.length === 1 && r[0].title === 'Starting soon' && /9:00 AM/.test(r[0].body), r);
+ok('l5 remindStart 0 switches it off', dueReminders({ core: core({ remindStart: 0 }), tasks: [task()], nowMs: at(8, 51) }).length === 0);
+r = dueReminders({ core: core(), tasks: [task()], nowMs: at(9, 15) });
+ok('l6 late nudge 10 to 45 min after', r.length === 1 && r[0].key.startsWith('l:'), r);
+ok('l7 no late nudge if that task is running', dueReminders({ core: { ...core(), active: { taskId: 't1' } }, tasks: [task()], nowMs: at(9, 15) }).length === 0);
+ok('l8 done tasks are skipped', dueReminders({ core: core(), tasks: [task({ status: 'done' })], nowMs: at(8, 55) }).length === 0);
+ok('l9 other days are skipped', dueReminders({ core: core(), tasks: [task({ date: '2026-11-25' })], nowMs: at(8, 55) }).length === 0);
+ok('l10 quiet hours hold everything back', dueReminders({ core: core({ quietFrom: '08:00', quietTo: '10:00' }), tasks: [task()], nowMs: at(8, 55) }).length === 0);
+ok('l11 quiet hours across midnight', inQuiet({ quietFrom: '22:00', quietTo: '07:00' }, 23 * 60) && inQuiet({ quietFrom: '22:00', quietTo: '07:00' }, 6 * 60) && !inQuiet({ quietFrom: '22:00', quietTo: '07:00' }, 12 * 60));
+const k1 = dueReminders({ core: core(), tasks: [task()], nowMs: at(8, 51) })[0].key, k2 = dueReminders({ core: core(), tasks: [task()], nowMs: at(8, 58) })[0].key;
+ok('l12 same task gives the same key all window (so it is sent once)', k1 === k2, [k1, k2]);
+r = dueReminders({ core: { ...core(), reminders: [{ id: 'r1', at: at(8, 0), text: 'Ready to get back to Reading?', fired: false }] }, tasks: [], nowMs: at(8, 2) });
+ok('l13 saved return reminder is sent', r.length === 1 && r[0].body.includes('get back'), r);
+ok('l14 already fired reminder is not', dueReminders({ core: { ...core(), reminders: [{ id: 'r1', at: at(8, 0), text: 'x', fired: true }] }, tasks: [], nowMs: at(8, 2) }).length === 0);
+ok('l15 12-hour format', fmt12('00:05') === '12:05 AM' && fmt12('13:30') === '1:30 PM' && fmt12('12:00') === '12:00 PM');
+ok('l16 bad time zone does not crash', Array.isArray(dueReminders({ core: core({ tz: 'Nope/Zone' }), tasks: [task()], nowMs: at(8, 51) })));
+console.log('FAILS:', fails); process.exit(fails ? 1 : 0);

@@ -24,6 +24,7 @@ function inQuiet(s) {
 }
 function remindTick() {
   var d = D(); if (!d) return;
+  try { var tz0 = Intl.DateTimeFormat().resolvedOptions().timeZone; if (tz0 && d.settings.tz !== tz0) { d.settings.tz = tz0; save(); } } catch (e) { }
   var s = d.settings, date = todayStr(), nm = nowMin(); d.sn = d.sn || {};
   if (d.snDay !== date) { d.sn = {}; d.snDay = date; save(); }
   if (inQuiet(s) || U.flow === 'checkin') return;
