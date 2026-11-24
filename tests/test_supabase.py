@@ -36,6 +36,8 @@ async def main():
             await p2.click('text=Continue'); await p2.wait_for_timeout(200); await p2.click('text=Finish setup'); await p2.wait_for_timeout(2500)
             d = dump(); ok('s8 u2 has own core', 'data/users/u2/core' in d['docs'])
             ok('s9 u2 cannot read u1 personal data', not any(k.startswith('data/users/u1') for k in json.loads(await p2.evaluate("(async()=>{const r=await fetch('/rest/v1/docs?select=path,data&parent=eq.data%2Fusers%2Fu1',{headers:{apikey:'a',Authorization:'Bearer '+JSON.parse(localStorage.getItem('focusflow.sb.session')).access_token}});return JSON.stringify((await r.json()).map(x=>x.path))})()")))) 
+            p3 = await newpage(b); await p3.goto(BASE + '/?code=abc123'); await p3.wait_for_selector('#sbCode')
+            ok('s9a invite link opens Create account with the code filled in', await p3.input_value('#sbCode') == 'abc123' and 'Create your account' in await p3.inner_text('body'))
             # a plan written on phone 1 reaches phone 2 through the server within a few seconds
             await p1.evaluate("(async()=>{const db=await claude.use('db'); await db.doc('plans/zz1').set({id:'zz1',title:'Family trip',owner:'u1'})})()")
             await p2.wait_for_timeout(8000)

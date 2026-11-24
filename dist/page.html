@@ -2054,6 +2054,7 @@ F.sbAuth = async function (f) {
 async function sbBoot() {
   SB.cfg = sbCfg(); if (!SB.cfg) return false;
   sbStore(sbLoad());
+  try { var q = new URLSearchParams(location.search), c = q.get('code'); if (c) { SB.ui.mode = 'up'; SB.ui.code = c.trim(); } } catch (e) { }
   if (SB.session) { await sbFresh(); if (!SB.session) { location.reload(); return false; } }
   if (!SB.session) { await new Promise(function (res) { SB.gate = res; sbGateShow(); }); }
   sbInstall(); sbPushRefresh();
