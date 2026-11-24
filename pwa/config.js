@@ -1,5 +1,7 @@
-/* Focus Flow server settings. Leave as null to run on this device only.
-   To turn on sign-in, sharing between phones and reminders when the app is closed, follow SETUP.md and fill these in.
-   These three values are safe to publish. Never put the service_role key or any private key here. */
-window.FF_CONFIG = null;
-/* window.FF_CONFIG = { supabaseUrl: 'https://YOUR-PROJECT-REF.supabase.co', supabaseAnonKey: 'YOUR-ANON-PUBLIC-KEY', vapidPublicKey: 'YOUR-VAPID-PUBLIC-KEY' }; */
+/* Focus Flow server settings. These values are safe to publish.
+   Never put a secret key, the service_role key or a database password in this file. */
+window.FF_CONFIG = {
+  supabaseUrl: 'https://myarqdsdogrgjaofxkdh.supabase.co',
+  supabaseAnonKey: 'sb_publishable_Z19ZSpQvqcgCGfltjYD0yQ_efKqelJN',
+  vapidPublicKey: ''   /* filled in after you make phone-alert keys (SETUP.md step 5) */
+};

@@ -18,6 +18,7 @@ http.createServer((req, res) => {
     let j = null; try { j = body ? JSON.parse(body) : null; } catch (e) { }
     const tok = (req.headers.authorization || '').replace('Bearer ', ''), uid = tok.startsWith('tok.') ? tok.slice(4) : null;
     const p = url.pathname;
+    if ((req.headers.authorization || '').startsWith('Bearer sb_')) return send(res, 401, { message: 'Invalid JWT' });
     if (p === '/__db') return send(res, 200, { docs: state.docs, subs: state.subs, users: state.users, tests: state.tests });
     if (p === '/auth/v1/signup') {
       const code = ((j.data && j.data.family_code) || '').trim().toLowerCase();
@@ -49,7 +50,7 @@ http.createServer((req, res) => {
       if (req.method === 'POST') { if (!canWrite(uid, j.path) || parent(j.path) !== j.parent) return send(res, 403, { message: 'row-level security' }); state.docs[j.path] = j.data; return send(res, 201); }
       if (req.method === 'DELETE') { const k = f('path'); if (!canWrite(uid, k)) return send(res, 403, { message: 'row-level security' }); delete state.docs[k]; return send(res, 204); }
     }
-    if (p === '/config.js') { res.writeHead(200, { 'Content-Type': 'text/javascript' }); return res.end("window.FF_CONFIG={supabaseUrl:location.origin,supabaseAnonKey:'anon',vapidPublicKey:'" + (process.env.VAPID || '') + "'};"); }
+    if (p === '/config.js') { res.writeHead(200, { 'Content-Type': 'text/javascript' }); return res.end("window.FF_CONFIG={supabaseUrl:location.origin,supabaseAnonKey:'sb_publishable_test',vapidPublicKey:'" + (process.env.VAPID || '') + "'};"); }
     let f = path.join(PWA, p === '/' ? 'index.html' : p);
     if (!f.startsWith(PWA) || !fs.existsSync(f)) { res.writeHead(404); return res.end(); }
     res.writeHead(200, { 'Content-Type': TYPES[path.extname(f)] || 'application/octet-stream' }); res.end(fs.readFileSync(f));

@@ -1928,7 +1928,9 @@ async function sbReq(path, o) {
   o = o || {};
   var h = { apikey: SB.cfg.supabaseAnonKey, 'Content-Type': 'application/json' };
   if (!o.anon) await sbFresh();
-  h.Authorization = 'Bearer ' + ((!o.anon && SB.session) ? SB.session.access_token : SB.cfg.supabaseAnonKey);
+  /* new-style publishable keys (sb_publishable_...) are not JWTs: send them only as apikey, never as a Bearer token */
+  if (!o.anon && SB.session) h.Authorization = 'Bearer ' + SB.session.access_token;
+  else if (String(SB.cfg.supabaseAnonKey).indexOf('sb_') !== 0) h.Authorization = 'Bearer ' + SB.cfg.supabaseAnonKey;
   if (o.headers) Object.keys(o.headers).forEach(function (k) { h[k] = o.headers[k]; });
   var r = await fetch(sbBase() + path, { method: o.method || 'GET', headers: h, body: o.body === undefined ? undefined : JSON.stringify(o.body) });
   var txt = await r.text(), j = null; try { j = txt ? JSON.parse(txt) : null; } catch (e) { }
