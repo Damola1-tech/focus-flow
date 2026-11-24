@@ -79,3 +79,8 @@ end $$;
 drop trigger if exists focusflow_family_code on auth.users;
 create trigger focusflow_family_code before insert on auth.users
   for each row execute function public.check_family_code();
+
+-- Let the app and the reminder job reach the tables (needed when the project does not grant access automatically).
+grant usage on schema public to anon, authenticated, service_role;
+grant select, insert, update, delete on public.docs, public.push_subs to authenticated;
+grant all on public.docs, public.push_subs, public.sent_reminders, public.app_config to service_role;
