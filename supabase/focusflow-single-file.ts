@@ -51,6 +51,45 @@ function dueReminders({ core, tasks, nowMs }) {
   return out;
 }
 
+// Daily and periodic nudges: morning plan, evening review, weekly report (Sunday), monthly report (1st of the month).
+// Settings: morningAt ('' = off, default 08:00), eveningAt ('' = off, default 20:00), weekly (default on).
+const addDay = (date, n) => new Date(Date.parse(date + 'T00:00:00Z') + n * 86400000).toISOString().slice(0, 10);
+const WINDOW = 10;
+function dueNudges({ core, tasks, nowMs }) {
+  const out = [], s = (core && core.settings) || {};
+  const { date, min } = localNow(nowMs, s.tz);
+  if (inQuiet(s, min)) return out;
+  const list = (tasks || []).filter((t) => t && t.date);
+  const inWin = (hhmm) => { const a = toMin(hhmm); return min >= a && min < a + WINDOW; };
+  const morning = s.morningAt === undefined ? '08:00' : s.morningAt;
+  const evening = s.eveningAt === undefined ? '20:00' : s.eveningAt;
+  if (morning && inWin(morning)) {
+    const td = list.filter((t) => t.date === date && (t.status === 'todo' || t.status === 'doing')).sort((a, b) => String(a.time || '99').localeCompare(String(b.time || '99')));
+    const first = td.find((t) => t.time);
+    out.push({ key: `n:am:${date}`, title: 'Good morning', body: td.length
+      ? `${td.length} task${td.length > 1 ? 's' : ''} planned today${first ? `, the first at ${fmt12(first.time)}` : ''}. Open Focus Flow to check in on your energy.`
+      : 'Nothing is planned for today yet. Take a minute to add your most important task.' });
+  }
+  if (evening && inWin(evening)) {
+    const today = list.filter((t) => t.date === date && t.status !== 'cancelled'), done = today.filter((t) => t.status === 'done').length;
+    const tmr = list.filter((t) => t.date === addDay(date, 1) && t.status === 'todo').length;
+    out.push({ key: `n:pm:${date}`, title: 'Evening review', body: (today.length ? `You finished ${done} of ${today.length} tasks today. ` : 'No tasks were planned today. ')
+      + (tmr ? `${tmr} planned for tomorrow.` : 'Tomorrow is empty: plan it now so the morning is easy.') });
+  }
+  if (s.weekly !== false) {
+    const dow = new Date(Date.parse(date + 'T00:00:00Z')).getUTCDay();
+    if (dow === 0 && inWin('19:00')) {
+      const from = addDay(date, -6), wk = list.filter((t) => t.date >= from && t.date <= date && t.status !== 'cancelled'), done = wk.filter((t) => t.status === 'done').length;
+      out.push({ key: `n:wk:${date}`, title: 'Your week in Focus Flow', body: wk.length ? `You finished ${done} of ${wk.length} tasks this week (${Math.round(100 * done / wk.length)}%). Open Insights for your reward and tips.` : 'No tasks were recorded this week. A fresh week starts tomorrow.' });
+    }
+    if (date.slice(8) === '01' && inWin('09:00')) {
+      const pm = addDay(date, -1).slice(0, 7), mo = list.filter((t) => t.date.slice(0, 7) === pm && t.status !== 'cancelled'), done = mo.filter((t) => t.status === 'done').length;
+      out.push({ key: `n:mo:${pm}`, title: 'Your monthly report', body: mo.length ? `Last month you finished ${done} of ${mo.length} tasks (${Math.round(100 * done / mo.length)}%). Open Insights, Monthly report, to see estimates against real time.` : 'No tasks were recorded last month. Open Focus Flow to start this one well.' });
+    }
+  }
+  return out;
+}
+
 // Things that happened in shared plans in the last few minutes, and who should hear about them.
 // rows: [{ path, parent, data, updatedAt(ms) }] from plan_tasks and plan_members. plans: { planId: {title, ownerId} }. names: { uid: name }.
 function planEvents({ rows, plans, names, nowMs, windowMs = 10 * 60 * 1000 }) {
@@ -80,7 +119,8 @@ function planEvents({ rows, plans, names, nowMs, windowMs = 10 * 60 * 1000 }) {
 // The server job's behaviour. It never touches Supabase directly: everything goes through `store`, `mail` and `push`,
 // so tests can run it with simple stand-ins.
 
-const monthsAround = (now) => [...new Set([-1, 0, 1].map((o) => new Date(now + o * 86400000).toISOString().slice(0, 7)))];
+// months to load: around today, and back far enough to cover last week and last month for the reports
+const monthsAround = (now) => [...new Set([-34, -7, -1, 0, 1].map((o) => new Date(now + o * 86400000).toISOString().slice(0, 7)))];
 
 // Sends one message to one person by phone alert and/or email. Returns how many went out.
 async function deliver({ store, mail, push }, uid, settings, items, { forceEmail = false } = {}) {
@@ -108,7 +148,8 @@ async function runCron(deps, now = Date.now()) {
   const cores = await store.cores(), tasksByUser = await store.tasksFor(monthsAround(now)), settingsOf = {};
   for (const c of cores) {
     settingsOf[c.uid] = (c.data && c.data.settings) || {};
-    const due = dueReminders({ core: c.data, tasks: tasksByUser[c.uid] || [], nowMs: now });
+    const mine = tasksByUser[c.uid] || [];
+    const due = dueReminders({ core: c.data, tasks: mine, nowMs: now }).concat(dueNudges({ core: c.data, tasks: mine, nowMs: now }));
     const fresh = [];
     for (const it of due) if (await store.claim(`${c.uid}:${it.key}`)) fresh.push(it);
     if (fresh.length) total += await deliver(deps, c.uid, settingsOf[c.uid], fresh);

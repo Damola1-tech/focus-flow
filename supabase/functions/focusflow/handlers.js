@@ -1,8 +1,9 @@
 // The server job's behaviour. It never touches Supabase directly: everything goes through `store`, `mail` and `push`,
 // so tests can run it with simple stand-ins.
-import { dueReminders, planEvents } from './logic.js';
+import { dueReminders, dueNudges, planEvents } from './logic.js';
 
-const monthsAround = (now) => [...new Set([-1, 0, 1].map((o) => new Date(now + o * 86400000).toISOString().slice(0, 7)))];
+// months to load: around today, and back far enough to cover last week and last month for the reports
+const monthsAround = (now) => [...new Set([-34, -7, -1, 0, 1].map((o) => new Date(now + o * 86400000).toISOString().slice(0, 7)))];
 
 // Sends one message to one person by phone alert and/or email. Returns how many went out.
 export async function deliver({ store, mail, push }, uid, settings, items, { forceEmail = false } = {}) {
@@ -30,7 +31,8 @@ export async function runCron(deps, now = Date.now()) {
   const cores = await store.cores(), tasksByUser = await store.tasksFor(monthsAround(now)), settingsOf = {};
   for (const c of cores) {
     settingsOf[c.uid] = (c.data && c.data.settings) || {};
-    const due = dueReminders({ core: c.data, tasks: tasksByUser[c.uid] || [], nowMs: now });
+    const mine = tasksByUser[c.uid] || [];
+    const due = dueReminders({ core: c.data, tasks: mine, nowMs: now }).concat(dueNudges({ core: c.data, tasks: mine, nowMs: now }));
     const fresh = [];
     for (const it of due) if (await store.claim(`${c.uid}:${it.key}`)) fresh.push(it);
     if (fresh.length) total += await deliver(deps, c.uid, settingsOf[c.uid], fresh);

@@ -109,6 +109,13 @@ Three ways, from simplest:
 - **Scheduled reminders never arrive but the test does**: step 8 (check that you replaced both placeholders). Look at Edge Functions, `reminders`, Logs.
 - **Nothing on iPhone**: it must be added to the Home Screen and opened from the icon.
 
+## Looking after it
+
+- **Crash reports:** Supabase, Table Editor, `client_errors` (newest first) shows errors from people's phones.
+- **Backups:** a copy of all data is taken each night (kept 14 days) in the `backups` table. How to restore one document is written at the bottom of `supabase/hardening.sql`.
+- **Privacy notice:** `privacy.html` is linked from the sign-up screen and Settings. Edit it if you change how things work.
+- **Optional:** Authentication, Providers/Passwords, switch on **leaked password protection**.
+
 ## How it works and what it does not do
 
 - Everyone's tasks live in their own private area. A plan, its people and its tasks are visible only to the people in it (invited people see the plan's title until they accept). Names are visible to every signed-in person. Nobody can sign up without the family code or an invite.
@@ -116,5 +123,5 @@ Three ways, from simplest:
 - Delete my account removes the person's data, the plans they own, their place in other plans and their sign-in.
 - The app polls for changes every few seconds while it is open, so shared plans update within about 6 seconds.
 - Phone alerts are not shown a second time while the app is open on screen (the app shows its own). Emails are sent either way.
-- Reminders sent by the server: task starting soon, task not started, and return-from-pause reminders. They respect the person's quiet hours and time zone. Hourly check-ins and the evening planning prompt still only appear inside the open app.
+- Reminders sent by the server: task starting soon, task not started, return-from-pause reminders, a morning message (default 8:00), an evening review (default 20:00), a weekly summary (Sunday 19:00) and a monthly report (1st, 09:00). Each person can change or switch these off in Settings. They respect quiet hours and the person's time zone. Hourly check-ins still only appear inside the open app.
 - The AI Coach only works when Focus Flow is opened through its Claude link; adding it here needs an Anthropic API key and another server function.

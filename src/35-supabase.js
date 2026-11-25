@@ -150,7 +150,7 @@ function sbGateHtml() {
     (up && !inv ? '<div class="field"><label for="sbCode">Family code</label><input id="sbCode" type="text" required autocomplete="off" value="' + esc(SB.ui.code || '') + '" placeholder="Ask the person who invited you"></div>' : '') +
     (SB.ui.msg ? '<p class="small" role="status" style="color:' + (SB.ui.ok ? 'var(--ok,#1a7f4b)' : 'var(--danger,#c0392b)') + '">' + esc(SB.ui.msg) + '</p>' : '') +
     '<button class="btn primary" type="submit"' + (SB.ui.busy ? ' disabled' : '') + '>' + (SB.ui.busy ? 'Please wait…' : rs ? 'Send reset email' : up ? 'Create account' : 'Sign in') + '</button>' +
-    '<div class="acts">' + (up || rs ? '<button type="button" class="btn sm ghost" data-a="sbMode" data-m="in">I already have an account</button>' : '<button type="button" class="btn sm ghost" data-a="sbMode" data-m="up">Create an account</button><button type="button" class="btn sm ghost" data-a="sbMode" data-m="reset">Forgot password</button>') + '</div></form></div>';
+    '<div class="acts">' + (up || rs ? '<button type="button" class="btn sm ghost" data-a="sbMode" data-m="in">I already have an account</button>' : '<button type="button" class="btn sm ghost" data-a="sbMode" data-m="up">Create an account</button><button type="button" class="btn sm ghost" data-a="sbMode" data-m="reset">Forgot password</button>') + '</div><p class="small muted" style="margin:0">By creating an account you agree to how your data is handled in the <a href="privacy.html" target="_blank" rel="noopener">privacy notice</a>.</p></form></div>';
 }
 function sbGateShow() { $('#app').innerHTML = sbGateHtml(); }
 A.sbMode = function (el) { SB.ui.mode = el.dataset.m; SB.ui.msg = ''; var e = $('#sbEmail'); if (e) SB.ui.email = e.value; sbGateShow(); };
@@ -254,6 +254,7 @@ function sbAccountCard() {
   return '<section class="card"><h2>Your account</h2><p class="small">Signed in as <b>' + esc(em) + '</b>. Your tasks, goals and settings are saved online and follow you to every phone or computer.</p>' +
     '<div class="kv small"><span class="muted">Status</span><b>' + esc(CL.status || 'Connected') + '</b></div>' +
     '<h3>Phone alerts</h3>' + push +
+    '<p class="small muted"><a href="privacy.html" target="_blank" rel="noopener">Privacy notice</a></p>' +
     '<div class="acts"><button class="btn" data-a="showBackup">' + (U.backup ? 'Hide backup' : 'Show backup text') + '</button><button class="btn" data-a="sbSignOut">Sign out</button><button class="btn danger" data-a="askDelProfile">Delete my account</button></div>' +
     (U.backup ? '<pre class="box" id="backupText">' + esc(JSON.stringify({ profile: p, data: d })) + '</pre><div class="acts"><button class="btn sm" data-a="copyBackup">Copy</button></div>' : '') +
     '<div class="field"><label for="importBox">Restore from a backup</label><textarea id="importBox" placeholder="Paste backup text here"></textarea></div><div class="acts"><button class="btn" data-a="importBackup">Restore</button></div></section>';
@@ -286,3 +287,19 @@ async function sbDeleteAccount() {
   try { localStorage.removeItem(LS_KEY); } catch (e) { }
   location.reload();
 }
+
+
+/* ---- crash reports: sent to the client_errors table so problems on people's phones can be seen ---- */
+var SBERR = { n: 0, last: '', at: 0 };
+async function sbLogError(msg, stack) {
+  try {
+    if (!SB.on || !SB.session || SBERR.n >= 10) return;
+    msg = String(msg || '').slice(0, 500);
+    var now = Date.now(); if (msg === SBERR.last && now - SBERR.at < 60000) return;
+    SBERR.last = msg; SBERR.at = now; SBERR.n++;
+    await sbReq('/rest/v1/client_errors', { method: 'POST', headers: { Prefer: 'return=minimal' },
+      body: { user_id: SB.session.user.id, message: msg, stack: String(stack || '').slice(0, 2000), page: location.pathname.slice(0, 200), agent: navigator.userAgent.slice(0, 200) } });
+  } catch (e) { /* never let error reporting cause errors */ }
+}
+window.addEventListener('error', function (e) { sbLogError(e.message, e.error && e.error.stack); });
+window.addEventListener('unhandledrejection', function (e) { var r = e.reason; sbLogError(r && r.message ? r.message : String(r), r && r.stack); });

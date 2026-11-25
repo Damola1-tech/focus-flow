@@ -101,4 +101,15 @@ ok('d3 the sign-in is deleted last', w.deleted.at(-1) === 'USER:u1', w.deleted);
 // ---- test button
 w = world(); w.subs.u1 = [{ endpoint: 'e', sub: { endpoint: 'e' } }]; x = await handleTest(w.deps, 'u1');
 ok('t1 test alert reaches phone and email', x.sent === 2 && w.sentMail.length === 1, x);
+// ---- nudges through the cron job
+{
+  const w2 = world(); const AM = Date.UTC(2026, 10, 25, 7, 2);   // 08:02 Lagos
+  w2.put('data/users/u1/core', core()); w2.put('data/users/u1/tasks-2026-11', { tasks: [{ id: 'a', title: 'A', date: '2026-11-25', time: '10:00', status: 'todo' }] });
+  w2.subs.u1 = [{ endpoint: 'e1', sub: { endpoint: 'e1' } }];
+  await runCron(w2.deps, AM); await runCron(w2.deps, AM + 60000); await runCron(w2.deps, AM + 120000);
+  ok('k20 morning message is sent exactly once across the window', w2.sentPush.filter((x) => x.title === 'Good morning').length === 1, w2.sentPush);
+  const w3 = world(); w3.put('data/users/u1/core', core({ morningAt: '' })); w3.subs.u1 = [{ endpoint: 'e1', sub: { endpoint: 'e1' } }];
+  await runCron(w3.deps, AM);
+  ok('k21 nothing is sent when the morning message is off', w3.sentPush.length === 0, w3.sentPush);
+}
 console.log('FAILS:', fails); process.exit(fails ? 1 : 0);
