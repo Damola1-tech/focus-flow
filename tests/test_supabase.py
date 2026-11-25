@@ -55,6 +55,36 @@ async def main():
             ok('s15 wrong password message', 'Wrong email or password' in await p1.inner_text('body'))
             await p1.fill('#sbPass', 'secret12'); await p1.click('button[type=submit]'); await p1.wait_for_timeout(2500)
             t = await p1.inner_text('body'); ok('s16 sign back in, data still there', 'Sign in' not in t and 'Finish setup' not in t, t[:160])
+            # ---- invite link from an email
+            p4 = await newpage(b); await p4.goto(BASE + '/?invite=goodtok'); await p4.wait_for_selector('#sbEmail')
+            t = await p4.inner_text('body')
+            ok('v1 invite link shows the invited email, locked, and no family code box', await p4.input_value('#sbEmail') == 'invitee@x.com' and await p4.get_attribute('#sbEmail', 'readonly') is not None and await p4.locator('#sbCode').count() == 0 and 'invited' in t, t[:200])
+            await p4.fill('#sbName', 'Invitee'); await p4.fill('#sbPass', 'secret12'); await p4.click('button[type=submit]'); await p4.wait_for_timeout(2500)
+            ok('v2 account created from the invite alone', 'Finish setup' in await p4.inner_text('body') or 'Continue' in await p4.inner_text('body'))
+            p5 = await newpage(b); await p5.goto(BASE + '/?invite=deadtok'); await p5.wait_for_selector('#sbEmail')
+            ok('v3 a bad invite link says so and falls back to sign in', 'no longer valid' in await p5.inner_text('body') and 'Sign in' in await p5.inner_text('body'))
+            # ---- password reset link
+            p6 = await newpage(b); await p6.goto(BASE + '/#access_token=tok.u2&refresh_token=ref.u2&expires_in=3600&type=recovery'); await p6.wait_for_selector('#sbPass2')
+            ok('w1 reset link opens the choose-a-new-password screen', 'Choose a new password' in await p6.inner_text('body') and '#' not in p6.url.split('/')[-1])
+            await p6.fill('#sbPass', 'brandnew1'); await p6.fill('#sbPass2', 'different1'); await p6.click('button[type=submit]'); await p6.wait_for_timeout(500)
+            ok('w2 mismatched passwords are caught', 'not the same' in await p6.inner_text('body'))
+            await p6.fill('#sbPass', 'brandnew1'); await p6.fill('#sbPass2', 'brandnew1'); await p6.click('button[type=submit]'); await p6.wait_for_timeout(2500)
+            ok('w3 after saving, the person is in the app', await p6.locator('#sbPass').count() == 0 and 'Choose a new password' not in await p6.inner_text('body'))
+            ok('w4 the server has the new password', dump()['users']['u2']['pw'] == 'brandnew1')
+            p7 = await newpage(b); await p7.goto(BASE + '/#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired'); await p7.wait_for_selector('#sbEmail')
+            ok('w5 an expired reset link explains itself', 'expired' in await p7.inner_text('body'))
+            # ---- invite by email from a plan
+            await p1.evaluate("U.flow=null; U.overlay=null; renderOverlay()")
+            h = await p1.evaluate("sbInviteBox({id:'plX'})"); ok('x1 plan owner gets an invite-by-email box', 'invEmails' in h and 'plX' in h)
+            await p1.evaluate("document.body.insertAdjacentHTML('beforeend','<textarea id=invEmails>a@x.com, b@y.com bad</textarea>')")
+            await p1.evaluate("A.sbInviteEmail({dataset:{plan:'plX'}})"); await p1.wait_for_timeout(1500)
+            f = [x for x in dump()['fn'] if x.get('action') == 'invite']
+            ok('x2 invite request sent with the valid addresses only', len(f) == 1 and f[0]['emails'] == ['a@x.com', 'b@y.com'] and f[0]['planId'] == 'plX', f)
+            # ---- delete the whole account
+            await p1.evaluate("A.delProfileYes()"); await p1.wait_for_timeout(3500)
+            d = dump(); ok('y1 account deletion asked the server to remove the sign-in', d['deleted'] == ['u1'] or 'u1' in d['deleted'], d['deleted'])
+            ok('y2 their documents are gone', not any(k.startswith('data/users/u1') or k == 'people/u1' for k in d['docs']), [k for k in d['docs'] if 'u1' in k])
+            ok('y3 and the app returns to the sign-in screen', 'Sign in' in await p1.inner_text('body'), (await p1.inner_text('body'))[:100])
             await b.close()
     finally:
         srv.terminate()

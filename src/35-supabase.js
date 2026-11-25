@@ -43,13 +43,19 @@ async function sbReq(path, o) {
   return j;
 }
 
+/* ---- the server function (invites, test alerts, account deletion) ---- */
+function sbFn(action, body) { return sbReq('/functions/v1/focusflow', { method: 'POST', body: Object.assign({ action: action }, body || {}) }); }
+function sbWaitSynced() {
+  return new Promise(function (res) { var n = 0, t = setInterval(function () { if ((!CL.dirty && !CLX.flushing) || ++n > 30) { clearInterval(t); res(); } }, 200); });
+}
+
 /* ---- sign in, create account, reset password, sign out ---- */
 async function sbSignIn(email, pw) {
   var j = await sbReq('/auth/v1/token?grant_type=password', { method: 'POST', anon: true, body: { email: email, password: pw } });
   sbStore(sbSession(j));
 }
-async function sbSignUp(email, pw, name, code) {
-  var j = await sbReq('/auth/v1/signup', { method: 'POST', anon: true, body: { email: email, password: pw, data: { name: name, family_code: code } } });
+async function sbSignUp(email, pw, name, code, invite) {
+  var j = await sbReq('/auth/v1/signup', { method: 'POST', anon: true, body: { email: email, password: pw, data: { name: name, family_code: code || '', invite: invite || '' } } });
   if (j && j.access_token) { sbStore(sbSession(j)); return true; }
   return false; /* the project asks for email confirmation first */
 }
@@ -128,13 +134,20 @@ function sbInstall() {
 
 /* ---- the sign-in screen ---- */
 function sbGateHtml() {
-  var m = SB.ui.mode, up = m === 'up', rs = m === 'reset';
+  var m = SB.ui.mode, up = m === 'up', rs = m === 'reset', np = m === 'newpw', inv = !!SB.ui.invite;
+  if (np) return '<div class="main" style="min-height:100%;justify-content:center;max-width:480px">' + heroBlock(true) +
+    '<form class="card" data-f="sbAuth"><h2>Choose a new password</h2>' +
+    '<div class="field"><label for="sbPass">New password</label><input id="sbPass" type="password" required minlength="6" autocomplete="new-password"></div>' +
+    '<div class="field"><label for="sbPass2">Type it again</label><input id="sbPass2" type="password" required minlength="6" autocomplete="new-password"></div>' +
+    (SB.ui.msg ? '<p class="small" role="status" style="color:var(--danger,#c0392b)">' + esc(SB.ui.msg) + '</p>' : '') +
+    '<button class="btn primary" type="submit"' + (SB.ui.busy ? ' disabled' : '') + '>' + (SB.ui.busy ? 'Please wait…' : 'Save new password') + '</button></form></div>';
   return '<div class="main" style="min-height:100%;justify-content:center;max-width:480px">' + heroBlock(true) +
     '<form class="card" data-f="sbAuth"><h2>' + (rs ? 'Reset your password' : up ? 'Create your account' : 'Sign in') + '</h2>' +
     (up ? '<div class="field"><label for="sbName">Your name</label><input id="sbName" type="text" required autocomplete="name" value="' + esc(SB.ui.name || '') + '"></div>' : '') +
-    '<div class="field"><label for="sbEmail">Email</label><input id="sbEmail" type="email" required autocomplete="email" value="' + esc(SB.ui.email || '') + '"></div>' +
+    (up && inv ? '<p class="small">You were invited to join Focus Flow. Create your account with the email the invite was sent to.</p>' : '') +
+    '<div class="field"><label for="sbEmail">Email</label><input id="sbEmail" type="email" required autocomplete="email" value="' + esc(SB.ui.email || '') + '"' + (up && inv ? ' readonly' : '') + '></div>' +
     (rs ? '' : '<div class="field"><label for="sbPass">Password</label><input id="sbPass" type="password" required minlength="6" autocomplete="' + (up ? 'new-password' : 'current-password') + '"></div>') +
-    (up ? '<div class="field"><label for="sbCode">Family code</label><input id="sbCode" type="text" required autocomplete="off" value="' + esc(SB.ui.code || '') + '" placeholder="Ask the person who invited you"></div>' : '') +
+    (up && !inv ? '<div class="field"><label for="sbCode">Family code</label><input id="sbCode" type="text" required autocomplete="off" value="' + esc(SB.ui.code || '') + '" placeholder="Ask the person who invited you"></div>' : '') +
     (SB.ui.msg ? '<p class="small" role="status" style="color:' + (SB.ui.ok ? 'var(--ok,#1a7f4b)' : 'var(--danger,#c0392b)') + '">' + esc(SB.ui.msg) + '</p>' : '') +
     '<button class="btn primary" type="submit"' + (SB.ui.busy ? ' disabled' : '') + '>' + (SB.ui.busy ? 'Please wait…' : rs ? 'Send reset email' : up ? 'Create account' : 'Sign in') + '</button>' +
     '<div class="acts">' + (up || rs ? '<button type="button" class="btn sm ghost" data-a="sbMode" data-m="in">I already have an account</button>' : '<button type="button" class="btn sm ghost" data-a="sbMode" data-m="up">Create an account</button><button type="button" class="btn sm ghost" data-a="sbMode" data-m="reset">Forgot password</button>') + '</div></form></div>';
@@ -143,11 +156,17 @@ function sbGateShow() { $('#app').innerHTML = sbGateHtml(); }
 A.sbMode = function (el) { SB.ui.mode = el.dataset.m; SB.ui.msg = ''; var e = $('#sbEmail'); if (e) SB.ui.email = e.value; sbGateShow(); };
 F.sbAuth = async function (f) {
   if (SB.ui.busy) return;
-  var email = (val(f, 'sbEmail') || '').trim(), m = SB.ui.mode; SB.ui.email = email; SB.ui.name = val(f, 'sbName') || SB.ui.name; SB.ui.code = val(f, 'sbCode') || SB.ui.code; SB.ui.busy = true; SB.ui.msg = ''; SB.ui.ok = false; sbGateShow();
+  var email = (val(f, 'sbEmail') || '').trim(), m = SB.ui.mode;
+  if (m === 'newpw') {
+    if (val(f, 'sbPass') !== val(f, 'sbPass2')) { SB.ui.msg = 'The two passwords are not the same.'; sbGateShow(); return; }
+    SB.ui.busy = true; SB.ui.msg = ''; sbGateShow();
+    try { await sbReq('/auth/v1/user', { method: 'PUT', body: { password: val(f, 'sbPass') } }); SB.ui.busy = false; SB.ui.mode = 'in'; if (SB.gate) SB.gate(); return; }
+    catch (e) { SB.ui.busy = false; SB.ui.msg = String(e.message || 'Could not save the new password.'); sbGateShow(); return; }
+  } SB.ui.email = email; SB.ui.name = val(f, 'sbName') || SB.ui.name; SB.ui.code = val(f, 'sbCode') || SB.ui.code; SB.ui.busy = true; SB.ui.msg = ''; SB.ui.ok = false; sbGateShow();
   try {
-    if (m === 'reset') { await sbReq('/auth/v1/recover', { method: 'POST', anon: true, body: { email: email } }); SB.ui.msg = 'If that email has an account, a reset link is on its way.'; SB.ui.ok = true; }
+    if (m === 'reset') { await sbReq('/auth/v1/recover?redirect_to=' + encodeURIComponent(location.origin + location.pathname), { method: 'POST', anon: true, body: { email: email } }); SB.ui.msg = 'If that email has an account, a reset link is on its way.'; SB.ui.ok = true; }
     else if (m === 'up') {
-      var started = await sbSignUp(email, val(f, 'sbPass'), (val(f, 'sbName') || '').trim(), (val(f, 'sbCode') || '').trim());
+      var started = await sbSignUp(email, val(f, 'sbPass'), (val(f, 'sbName') || '').trim(), (val(f, 'sbCode') || '').trim(), SB.ui.invite);
       if (!started) { SB.ui.msg = 'Almost done. Open the email we sent you to confirm, then sign in.'; SB.ui.ok = true; SB.ui.mode = 'in'; }
     } else await sbSignIn(email, val(f, 'sbPass'));
   } catch (e) {
@@ -162,8 +181,30 @@ async function sbBoot() {
   SB.cfg = sbCfg(); if (!SB.cfg) return false;
   sbStore(sbLoad());
   try { var q = new URLSearchParams(location.search), c = q.get('code'); if (c) { SB.ui.mode = 'up'; SB.ui.code = c.trim(); } } catch (e) { }
+  /* a link from an email lands here with the sign-in details after the # (password reset, or confirming an email) */
+  try {
+    var hp = new URLSearchParams(location.hash.replace(/^#/, ''));
+    if (hp.get('error_description')) { SB.ui.msg = /expired|invalid/i.test(hp.get('error_description')) ? 'That link has expired or was already used. Ask for a new one.' : hp.get('error_description'); SB.ui.ok = false; history.replaceState(null, '', location.pathname + location.search); }
+    else if (hp.get('access_token')) {
+      var ns = { access_token: hp.get('access_token'), refresh_token: hp.get('refresh_token'), expires_at: +hp.get('expires_at') || (Math.floor(Date.now() / 1000) + (+hp.get('expires_in') || 3600)), user: {} };
+      history.replaceState(null, '', location.pathname + location.search);
+      sbStore(ns);
+      try { var uj = await sbReq('/auth/v1/user'); ns.user = uj; sbStore(ns); } catch (e) { sbStore(null); }
+      if (SB.session && hp.get('type') === 'recovery') SB.ui.mode = 'newpw';
+    }
+  } catch (e) { }
+  /* an invite link: ?invite=TOKEN. The server says which email it is for. */
+  try {
+    var itok = new URLSearchParams(location.search).get('invite');
+    if (itok && !SB.session) {
+      var em = await sbReq('/rest/v1/rpc/invite_lookup', { method: 'POST', anon: true, body: { t: itok } });
+      if (em) { SB.ui.mode = 'up'; SB.ui.invite = itok; SB.ui.email = em; }
+      else { SB.ui.mode = 'in'; SB.ui.msg = 'That invite link is no longer valid. Ask for a new one, or sign in if you already have an account.'; SB.ui.ok = false; }
+    }
+  } catch (e) { }
   if (SB.session) { await sbFresh(); if (!SB.session) { location.reload(); return false; } }
-  if (!SB.session) { await new Promise(function (res) { SB.gate = res; sbGateShow(); }); }
+  if (SB.session && SB.ui.mode === 'newpw') { await new Promise(function (res) { SB.gate = res; sbGateShow(); }); }
+  else if (!SB.session) { await new Promise(function (res) { SB.gate = res; sbGateShow(); }); }
   sbInstall(); sbPushRefresh();
   return true;
 }
@@ -197,7 +238,7 @@ A.sbPushOff = async function () {
 };
 A.sbPushTest = async function () {
   try {
-    var r = await sbReq('/functions/v1/reminders', { method: 'POST', body: { test: true } });
+    var r = await sbFn('test');
     toast(r && r.sent ? 'Test sent. It should arrive in a few seconds.' : 'Nothing was sent. Turn on phone alerts or email reminders first.');
   } catch (e) { toast('Test failed: ' + (e.message || 'server not set up yet')); }
 };
@@ -213,7 +254,35 @@ function sbAccountCard() {
   return '<section class="card"><h2>Your account</h2><p class="small">Signed in as <b>' + esc(em) + '</b>. Your tasks, goals and settings are saved online and follow you to every phone or computer.</p>' +
     '<div class="kv small"><span class="muted">Status</span><b>' + esc(CL.status || 'Connected') + '</b></div>' +
     '<h3>Phone alerts</h3>' + push +
-    '<div class="acts"><button class="btn" data-a="showBackup">' + (U.backup ? 'Hide backup' : 'Show backup text') + '</button><button class="btn" data-a="sbSignOut">Sign out</button><button class="btn danger" data-a="askDelProfile">Delete my data</button></div>' +
+    '<div class="acts"><button class="btn" data-a="showBackup">' + (U.backup ? 'Hide backup' : 'Show backup text') + '</button><button class="btn" data-a="sbSignOut">Sign out</button><button class="btn danger" data-a="askDelProfile">Delete my account</button></div>' +
     (U.backup ? '<pre class="box" id="backupText">' + esc(JSON.stringify({ profile: p, data: d })) + '</pre><div class="acts"><button class="btn sm" data-a="copyBackup">Copy</button></div>' : '') +
     '<div class="field"><label for="importBox">Restore from a backup</label><textarea id="importBox" placeholder="Paste backup text here"></textarea></div><div class="acts"><button class="btn" data-a="importBackup">Restore</button></div></section>';
+}
+
+/* ---- invite by email (shown to the plan's owner) ---- */
+function sbInviteBox(pl) {
+  return '<div class="field" style="margin-top:8px"><label for="invEmails">Invite by email</label>' +
+    '<textarea id="invEmails" rows="2" placeholder="name@example.com, another@example.com"></textarea>' +
+    '<span class="small muted">People who already use Focus Flow get a notice. New people get an email with their own link to join.</span></div>' +
+    '<div class="acts"><button class="btn sm" data-a="sbInviteEmail" data-plan="' + pl.id + '">Send invites</button></div>';
+}
+A.sbInviteEmail = async function (el) {
+  var box = $('#invEmails'); if (!box) return;
+  var list = (box.value || '').split(/[\s,;]+/).filter(function (x) { return /^\S+@\S+\.\S+$/.test(x); });
+  if (!list.length) { toast('Type one or more email addresses'); return; }
+  toast('Sending invites…');
+  try {
+    await sbWaitSynced();
+    var r = await sbFn('invite', { planId: el.dataset.plan, emails: list, siteUrl: location.origin + location.pathname });
+    var res = (r && r.results) || [], sent = res.filter(function (x) { return x.status === 'emailed' || x.status === 'added'; }).length, bad = res.filter(function (x) { return x.status === 'failed'; });
+    box.value = '';
+    toast(sent + ' invite' + (sent === 1 ? '' : 's') + ' sent' + (bad.length ? '. Could not email: ' + bad.map(function (x) { return x.email; }).join(', ') : ''), 7000);
+  } catch (e) { toast('Could not send invites: ' + (e.message || 'server not set up yet'), 7000); }
+};
+/* ---- delete the whole account ---- */
+async function sbDeleteAccount() {
+  try { await sbFn('deleteAccount'); } catch (e) { toast('Your data is deleted, but the sign-in could not be removed. Please tell the person who runs Focus Flow.', 8000); }
+  sbStore(null);
+  try { localStorage.removeItem(LS_KEY); } catch (e) { }
+  location.reload();
 }

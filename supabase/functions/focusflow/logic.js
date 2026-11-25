@@ -42,3 +42,29 @@ export function dueReminders({ core, tasks, nowMs }) {
   });
   return out;
 }
+
+// Things that happened in shared plans in the last few minutes, and who should hear about them.
+// rows: [{ path, parent, data, updatedAt(ms) }] from plan_tasks and plan_members. plans: { planId: {title, ownerId} }. names: { uid: name }.
+export function planEvents({ rows, plans, names, nowMs, windowMs = 10 * 60 * 1000 }) {
+  const out = [], nm = (u) => (names && names[u]) || 'Someone';
+  for (const r of rows || []) {
+    if (!r || nowMs - r.updatedAt > windowMs) continue;
+    const d = r.data || {}, pl = (plans && plans[d.planId]) || null;
+    if (!pl) continue;
+    const q = `"${pl.title || 'a plan'}"`;
+    if (r.parent === 'plan_members') {
+      if (d.status === 'invited' && d.uid !== pl.ownerId)
+        out.push({ to: d.uid, key: `inv:${d.planId}:${d.uid}`, title: 'New invitation', body: `${nm(pl.ownerId)} invited you to ${q}. Open Focus Flow, then Shared, to accept.`, always: true });
+      if (d.status === 'joined' && d.uid !== pl.ownerId)
+        out.push({ to: pl.ownerId, key: `join:${d.planId}:${d.uid}`, title: 'Someone joined your plan', body: `${nm(d.uid)} joined ${q}.` });
+    } else if (r.parent === 'plan_tasks') {
+      if (d.assigneeId && d.assigneeId !== d.createdBy && !d.done)
+        out.push({ to: d.assigneeId, key: `asg:${d.id}:${d.assigneeId}`, title: 'A task for you', body: `${nm(d.createdBy)} gave you "${d.title}" in ${q}.` });
+      if (d.done && d.doneBy) {
+        const to = new Set([pl.ownerId, d.assigneeId].filter((x) => x && x !== d.doneBy));
+        for (const u of to) out.push({ to: u, key: `done:${d.id}:${d.doneAt || 0}:${u}`, title: 'Task finished', body: `${nm(d.doneBy)} finished "${d.title}" in ${q}.` });
+      }
+    }
+  }
+  return out;
+}

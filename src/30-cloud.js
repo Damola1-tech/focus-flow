@@ -170,6 +170,7 @@ async function cloudDeleteMine() {
     for (var id in CLX.lastP) await CLX.db.doc('data/users/' + uid + '/' + id).delete();
     CLX.lastP = {}; await CLX.db.doc('people/' + uid).delete(); CLX.lastPeople = '';
   } catch (e) { toast('Could not delete everything. Try again.'); return; }
+  if (typeof SB !== 'undefined' && SB.on) { await sbDeleteAccount(); return; }
   S.profiles = []; S.data = {}; S.activeId = null; S.shared = []; S.pendingSync = false; CLX.applying = true; save(); CLX.applying = false; CL.dirty = false;
   U.overlay = null; renderOverlay(); U.wiz = newWiz(); U.picker = true; applyTheme(); render();
 }
@@ -192,7 +193,10 @@ async function flushShared() {
     var str = JSON.stringify(cur[path]);
     if (CLX.lastShared[path] !== str) { await CLX.db.doc(path).set(JSON.parse(str)); CLX.lastShared[path] = str; }
   }
-  for (path in CLX.lastShared) if (!cur[path]) { await CLX.db.doc(path).delete(); delete CLX.lastShared[path]; }
+  /* remove tasks first, then people, then the plan itself (the privacy rules need the plan to exist until its tasks and people are gone) */
+  var rank = function (p) { return p.indexOf('plan_tasks/') === 0 ? 0 : p.indexOf('plan_members/') === 0 ? 1 : 2; };
+  var gone = Object.keys(CLX.lastShared).filter(function (k) { return !cur[k]; }).sort(function (a, b) { return rank(a) - rank(b); });
+  for (var gi = 0; gi < gone.length; gi++) { await CLX.db.doc(gone[gi]).delete(); delete CLX.lastShared[gone[gi]]; }
 }
 function rebuildShared() {
   if (!CL.on || !CL.sharedReady) return;

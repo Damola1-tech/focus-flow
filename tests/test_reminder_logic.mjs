@@ -1,4 +1,4 @@
-import { dueReminders, localNow, inQuiet, fmt12 } from '../supabase/functions/reminders/logic.js';
+import { dueReminders, localNow, inQuiet, fmt12 } from '../supabase/functions/focusflow/logic.js';
 let fails = 0; const ok = (n, c, x) => { console.log((c ? 'PASS ' : 'FAIL ') + n + (c ? '' : ' ' + JSON.stringify(x))); if (!c) fails++; };
 // 08:00 in Lagos (UTC+1) on 24 Nov 2026 is 07:00 UTC
 const at = (h, m) => Date.UTC(2026, 10, 24, h - 1, m);

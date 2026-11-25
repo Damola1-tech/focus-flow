@@ -3,5 +3,5 @@
 window.FF_CONFIG = {
   supabaseUrl: 'https://myarqdsdogrgjaofxkdh.supabase.co',
   supabaseAnonKey: 'sb_publishable_Z19ZSpQvqcgCGfltjYD0yQ_efKqelJN',
-  vapidPublicKey: ''   /* filled in after you make phone-alert keys (SETUP.md step 5) */
+  vapidPublicKey: 'BAi4ponmrzVygIDtjjYk7ZTy5MI4IAuOD0lOyepzoEHK7gaO-GRyf0Us3rQmghih-fEmcaPVjOW5CplBo_uKaHs'
 };

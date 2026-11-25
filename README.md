@@ -82,6 +82,6 @@ in-memory database, user, and AI), including two people sharing one plan.
 
 Follow [SETUP.md](SETUP.md). It adds email sign-in with a family code, plans shared between phones, and
 reminders by phone alert and email even when the app is closed. Code: `src/35-supabase.js` (client),
-`supabase/schema.sql`, `supabase/cron.sql` and `supabase/functions/reminders/` (server).
+`supabase/schema.sql`, `supabase/hardening.sql`, `supabase/cron.sql` and `supabase/functions/focusflow/` (server).
 Tests: `python3 tests/test_supabase.py` (runs the app against a pretend server) and
-`node tests/test_reminder_logic.mjs`.
+`node tests/test_reminder_logic.mjs`, `node tests/test_handlers.mjs` and `python3 tests/test_rls.py` (privacy rules, needs a local Postgres).

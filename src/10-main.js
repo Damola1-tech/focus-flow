@@ -344,7 +344,7 @@ function inPlanWindow() {
 /* ---------- reminders (work while the app is open) ---------- */
 function notify(text) {
   U.notice = text; toast(text, 6000);
-  try { if (D().settings.appNotify && 'Notification' in window && Notification.permission === 'granted') new Notification('Focus Flow', { body: text }); } catch (e) { }
+  try { if (D().settings.appNotify && !(typeof SB !== 'undefined' && SB.pushState === 'on') && 'Notification' in window && Notification.permission === 'granted') new Notification('Focus Flow', { body: text }); } catch (e) { }
 }
 function tick() {
   if (!S.activeId || !D()) return;
@@ -1067,7 +1067,7 @@ function viewPlan(pl) {
   return '<div class="row"><button class="btn sm" data-a="spBack">All plans</button></div>' +
     '<div class="head"><div><h1>' + esc(pl.title) + '</h1><small>' + esc(kindName(pl.kind)) + '</small></div><span class="pill ' + (urgent ? 'warn' : '') + '">' + esc(deadlineText(pl)) + '</span></div>' +
     '<section class="card" style="flex-direction:row;align-items:center;gap:18px"><div class="ring" style="background:conic-gradient(var(--accent) ' + Math.round(pr.pct * 3.6) + 'deg,var(--line) 0)"><div>' + pr.pct + '%</div></div><div><h3>Overall progress</h3><p class="muted small">' + pr.done + ' of ' + pr.n + ' tasks done by everyone</p></div></section>' +
-    '<div class="grid"><section class="card"><div class="row between"><h2>People</h2>' + (own ? '<button class="btn sm primary" data-a="spEditPlan" data-plan="' + pl.id + '">' + ic('plus', 16) + ' Invite</button>' : '') + '</div>' + memRows + (own && !invited.length && joined.length < 2 ? '<p class="small muted">Nobody else is in this plan yet. Tap Invite to add family or friends.</p>' : '') + (own && invited.length ? '<p class="small muted">' + (CL.on ? 'Invited people accept when they next open Focus Flow. They get a notice on Home and in Shared.' : 'Invited people accept from their own profile: tap your picture on Home, choose their name, then open Shared.') + '</p>' : '') + '</section>' +
+    '<div class="grid"><section class="card"><div class="row between"><h2>People</h2>' + (own ? '<button class="btn sm primary" data-a="spEditPlan" data-plan="' + pl.id + '">' + ic('plus', 16) + ' Invite</button>' : '') + '</div>' + memRows + (own && !invited.length && joined.length < 2 ? '<p class="small muted">Nobody else is in this plan yet. Tap Invite to add family or friends.</p>' : '') + (own && typeof SB !== 'undefined' && SB.on ? sbInviteBox(pl) : '') + (own && invited.length ? '<p class="small muted">' + (CL.on ? 'Invited people accept when they next open Focus Flow. They get a notice on Home and in Shared.' : 'Invited people accept from their own profile: tap your picture on Home, choose their name, then open Shared.') + '</p>' : '') + '</section>' +
     '<section class="card"><div class="row between"><h2>Tasks</h2><button class="btn sm primary" data-a="spTaskNew" data-plan="' + pl.id + '">' + ic('plus', 16) + ' Add task</button></div>' + (rows ? '<div>' + rows + '</div>' : '<p class="muted">No tasks yet. Add the first one and give it to someone.</p>') + '<span class="small muted">Add a task to your day to plan it with your own tasks. It then counts toward your weekly score like any other task.</span></section></div>' +
     '<section class="card soft"><span class="small">Only this plan\'s tasks are shared with its members. Your personal tasks, goals and check-ins stay private.</span></section>' +
     '<div class="acts">' + (own ? '<button class="btn" data-a="spEditPlan" data-plan="' + pl.id + '">Edit plan and people</button><button class="btn danger" data-a="spDelPlan" data-id="' + pl.id + '">Delete plan</button>' : '<button class="btn danger" data-a="spLeave" data-id="' + pl.id + '">Leave plan</button>') + '</div>';
@@ -1275,7 +1275,7 @@ var A = {
       S.data[S.activeId] = ensureData(o.data); save(); applyTheme(); toast('Backup restored'); render();
     } catch (e) { toast('That does not look like a Focus Flow backup'); }
   },
-  askDelProfile: function () { openOverlay('confirm', { text: 'Remove ' + P().name + ' and all of their data? This cannot be undone.', yes: 'delProfileYes' }); },
+  askDelProfile: function () { openOverlay('confirm', { text: (typeof SB !== 'undefined' && SB.on) ? 'Delete your Focus Flow account, your tasks and everything you shared? Plans you own are deleted for everyone in them. This cannot be undone.' : 'Remove ' + P().name + ' and all of their data? This cannot be undone.', yes: 'delProfileYes' }); },
   delProfileYes: function () {
     if (CL.on) { cloudDeleteMine(); return; }
     var id = S.activeId; S.profiles = S.profiles.filter(function (p) { return p.id !== id; }); delete S.data[id]; purgeShared(id);

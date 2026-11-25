@@ -2,7 +2,7 @@
 // same access rules as schema.sql, push_subs, and a stub reminders function. Also serves ../pwa as the app.
 const http = require('http'), fs = require('fs'), path = require('path');
 const PWA = path.join(__dirname, '..', 'pwa');
-const state = { users: {}, docs: {}, subs: {}, tests: 0, FAMILY: 'ABC123' };
+const state = { users: {}, docs: {}, subs: {}, tests: 0, FAMILY: 'ABC123', invites: { goodtok: { email: 'invitee@x.com', plan: 'pl9' } }, fn: [], deleted: [] };
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
 const send = (res, code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(obj === undefined ? '' : JSON.stringify(obj)); };
 const SHARED = ['plans', 'plan_members', 'plan_tasks'];
@@ -19,10 +19,11 @@ http.createServer((req, res) => {
     const tok = (req.headers.authorization || '').replace('Bearer ', ''), uid = tok.startsWith('tok.') ? tok.slice(4) : null;
     const p = url.pathname;
     if ((req.headers.authorization || '').startsWith('Bearer sb_')) return send(res, 401, { message: 'Invalid JWT' });
-    if (p === '/__db') return send(res, 200, { docs: state.docs, subs: state.subs, users: state.users, tests: state.tests });
+    if (p === '/__db') return send(res, 200, { docs: state.docs, subs: state.subs, users: state.users, tests: state.tests, fn: state.fn, deleted: state.deleted });
     if (p === '/auth/v1/signup') {
       const code = ((j.data && j.data.family_code) || '').trim().toLowerCase();
-      if (code !== state.FAMILY.toLowerCase()) return send(res, 500, { msg: 'Database error saving new user' });
+      const inv = state.invites[(j.data && j.data.invite) || ''];
+      if (!(inv && inv.email === j.email) && code !== state.FAMILY.toLowerCase()) return send(res, 500, { msg: 'Database error saving new user' });
       if (Object.values(state.users).some((u) => u.email === j.email)) return send(res, 422, { msg: 'User already registered' });
       const u = { id: 'u' + (Object.keys(state.users).length + 1), email: j.email, pw: j.password, name: (j.data && j.data.name) || '' };
       state.users[u.id] = u; return send(res, 200, session(u));
@@ -33,8 +34,20 @@ http.createServer((req, res) => {
       return u ? send(res, 200, session(u)) : send(res, 400, { error_description: 'Invalid login credentials' });
     }
     if (p === '/auth/v1/logout') return send(res, 204);
+    if (p === '/auth/v1/user') {
+      const u = state.users[uid]; if (!u) return send(res, 401, { msg: 'bad jwt' });
+      if (req.method === 'PUT') { u.pw = j.password; return send(res, 200, { id: u.id, email: u.email }); }
+      return send(res, 200, { id: u.id, email: u.email, user_metadata: { name: u.name } });
+    }
+    if (p === '/rest/v1/rpc/invite_lookup') { const i = state.invites[j.t]; return send(res, 200, i ? i.email : null); }
     if (p === '/auth/v1/recover') return send(res, 200, {});
-    if (p === '/functions/v1/reminders') { if (!uid) return send(res, 401, { error: 'not signed in' }); state.tests++; return send(res, 200, { sent: 1 }); }
+    if (p === '/functions/v1/focusflow') {
+      if (!uid) return send(res, 401, { error: 'not signed in' }); state.fn.push(j);
+      if (j.action === 'test') { state.tests++; return send(res, 200, { sent: 1 }); }
+      if (j.action === 'invite') return send(res, 200, { results: j.emails.map((e) => ({ email: e, status: 'emailed' })) });
+      if (j.action === 'deleteAccount') { state.deleted.push(uid); delete state.users[uid]; return send(res, 200, { ok: true }); }
+      return send(res, 400, {});
+    }
     if (p === '/rest/v1/push_subs') {
       if (!uid) return send(res, 401, { message: 'JWT' });
       if (req.method === 'POST') { state.subs[j.endpoint] = j; return send(res, 201); }
