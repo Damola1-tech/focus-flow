@@ -188,12 +188,18 @@ async function handleDelete(deps, uid) {
   return { ok: true };
 }
 
-const env = (k: string) => Deno.env.get(k) || "";
+// Public values have built-in defaults; only the three real secrets (VAPID_PRIVATE_KEY, SMTP_USER, SMTP_PASS) need to be set.
+const DEFAULTS: Record<string, string> = {
+  SMTP_HOST: "smtp.gmail.com", SMTP_PORT: "465",
+  SITE_URL: "https://damola1-tech.github.io/focus-flow/",
+  VAPID_PUBLIC_KEY: "BAi4ponmrzVygIDtjjYk7ZTy5MI4IAuOD0lOyepzoEHK7gaO-GRyf0Us3rQmghih-fEmcaPVjOW5CplBo_uKaHs",
+};
+const env = (k: string) => Deno.env.get(k) || DEFAULTS[k] || "";
 const admin = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
-if (env("VAPID_PUBLIC_KEY") && env("VAPID_PRIVATE_KEY")) webpush.setVapidDetails(env("VAPID_SUBJECT") || "mailto:admin@example.com", env("VAPID_PUBLIC_KEY"), env("VAPID_PRIVATE_KEY"));
+if (env("VAPID_PUBLIC_KEY") && env("VAPID_PRIVATE_KEY")) webpush.setVapidDetails(env("VAPID_SUBJECT") || ("mailto:" + (env("SMTP_USER") || "admin@example.com")), env("VAPID_PUBLIC_KEY"), env("VAPID_PRIVATE_KEY"));
 const transport = env("SMTP_HOST") ? nodemailer.createTransport({ host: env("SMTP_HOST"), port: +(env("SMTP_PORT") || 465), secure: +(env("SMTP_PORT") || 465) === 465, auth: { user: env("SMTP_USER"), pass: env("SMTP_PASS") } }) : null;
 
-const mail = { enabled: !!transport, send: ({ to, subject, text }) => transport.sendMail({ from: env("MAIL_FROM") || env("SMTP_USER"), to, subject, text }) };
+const mail = { enabled: !!transport, send: ({ to, subject, text }) => transport.sendMail({ from: env("MAIL_FROM") || ("Focus Flow <" + env("SMTP_USER") + ">"), to, subject, text }) };
 const push = { send: (sub, payload) => webpush.sendNotification(sub, JSON.stringify(payload), { TTL: 900 }) };
 const ok = (r) => { if (r.error) throw new Error(r.error.message); return r.data; };
 const uidOf = (path: string) => path.split("/")[2];
@@ -240,7 +246,13 @@ const json = (o: unknown, status = 200) => new Response(JSON.stringify(o), { sta
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return json({});
   try {
-    if (env("CRON_SECRET") && req.headers.get("x-cron-secret") === env("CRON_SECRET")) return json(await runCron(deps));
+    const given = req.headers.get("x-cron-secret") || "";
+    if (given) {
+      // the schedule proves itself with a secret that lives only inside the database (app_config.cron_secret)
+      const row = await admin.from("app_config").select("value").eq("key", "cron_secret").maybeSingle();
+      if (row.data?.value && row.data.value === given) return json(await runCron(deps));
+      return json({ error: "bad secret" }, 401);
+    }
     const token = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
     const { data } = await admin.auth.getUser(token);
     const uid = data?.user?.id;

@@ -42,7 +42,7 @@ On any computer with Node installed, from the repo folder:
 node supabase/make-vapid-keys.mjs
 ```
 
-It prints three values: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `CRON_SECRET`. Keep that window open or copy them into a note.
+It prints the `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` (ignore the third value it prints). Keep that window open or copy them into a note.
 
 ## 6. Tell the app about the server
 
@@ -63,20 +63,13 @@ These three are safe to publish. Commit and push. When GitHub Pages updates (abo
 1. Left menu **Edge Functions**, **Deploy a new function**, **Via Editor**. Name it exactly `focusflow`.
 2. Delete the sample code and paste the whole of `supabase/focusflow-single-file.ts`. Click **Deploy**.
 3. Open the function's settings and switch **Enforce JWT verification** (Verify JWT) **off**. The function checks sign-in and the secret itself.
-4. Left menu **Edge Functions**, **Secrets** (or Project Settings, Edge Functions). Add these:
+4. Left menu **Edge Functions**, **Secrets**. Add just these three (everything else has a built-in default; change them in `supabase/functions/focusflow/index.ts` if you use another site or mail provider):
 
 | Name | Value |
 |---|---|
-| `VAPID_PUBLIC_KEY` | from step 5 |
 | `VAPID_PRIVATE_KEY` | from step 5 |
-| `VAPID_SUBJECT` | `mailto:your-email@gmail.com` |
-| `CRON_SECRET` | from step 5 |
-| `SMTP_HOST` | `smtp.gmail.com` |
-| `SMTP_PORT` | `465` |
 | `SMTP_USER` | your Gmail address |
 | `SMTP_PASS` | a Gmail **App password** (see below) |
-| `MAIL_FROM` | `Focus Flow <your-gmail-address>` |
-| `SITE_URL` | your app address, for example `https://damola1-tech.github.io/focus-flow/` (invitation links point here) |
 
 Gmail sends about 500 emails a day, far more than a family needs.
 
@@ -85,7 +78,7 @@ Gmail sends about 500 emails a day, far more than a family needs.
 ## 8. Start the one-minute schedule
 
 1. **SQL Editor**, **New query**, paste `supabase/cron.sql`.
-2. Replace `YOUR-PROJECT-REF` with your project ref (the `abcdxyz` part of your URL) and `YOUR-CRON-SECRET` with the `CRON_SECRET` from step 5.
+2. Replace `YOUR-PROJECT-REF` with your project ref (the `abcdxyz` part of your URL). The schedule's secret is made inside the database for you.
 3. Click **Run**.
 
 ## 8b. Sign-in links in emails
