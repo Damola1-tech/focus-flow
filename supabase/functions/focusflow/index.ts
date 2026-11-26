@@ -3,7 +3,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
 import nodemailer from "npm:nodemailer@6.9.14";
-import { runCron, handleTest, handleInvite, handleDelete, handleCoach, handleCoachStatus, toOpenAI, fromOpenAI } from "./handlers.js";
+import { runCron, handleTest, handleInvite, handleDelete, handleCoach, handleCoachStatus, toOpenAI, fromOpenAI, withFallback } from "./handlers.js";
 
 // Public values have built-in defaults; only the three real secrets (VAPID_PRIVATE_KEY, SMTP_USER, SMTP_PASS) need to be set.
 const DEFAULTS: Record<string, string> = {
@@ -34,13 +34,16 @@ const ai = {
     }
     const base = (env("AI_BASE_URL") || "https://generativelanguage.googleapis.com/v1beta/openai").replace(/\/+$/, "");
     const t = toOpenAI(system, messages, tools);
-    const res = await fetch(base + "/chat/completions", {
-      method: "POST", signal: AbortSignal.timeout(50000),
-      headers: { "content-type": "application/json", authorization: "Bearer " + env("AI_API_KEY") },
-      body: JSON.stringify({ model: env("AI_MODEL") || "gemini-flash-latest", max_tokens: 700, ...t }),
+    const models = (env("AI_MODEL") || "gemini-flash-latest,gemini-flash-lite-latest").split(",").map((x: string) => x.trim()).filter(Boolean);
+    return await withFallback(models, async (model: string) => {
+      const res = await fetch(base + "/chat/completions", {
+        method: "POST", signal: AbortSignal.timeout(25000),
+        headers: { "content-type": "application/json", authorization: "Bearer " + env("AI_API_KEY") },
+        body: JSON.stringify({ model, max_tokens: 700, ...t }),
+      });
+      if (!res.ok) { const er: any = new Error("ai " + res.status + " " + model + " " + (await res.text()).slice(0, 200)); er.status = res.status; throw er; }
+      return fromOpenAI(await res.json());
     });
-    if (!res.ok) throw new Error("ai " + res.status + " " + (await res.text()).slice(0, 200));
-    return fromOpenAI(await res.json());
   },
 };
 const ok = (r) => { if (r.error) throw new Error(r.error.message); return r.data; };

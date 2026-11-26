@@ -274,7 +274,7 @@ async function handleCoach(deps, uid, body, env = {}, now = Date.now()) {
   try {
     const r = await ai.complete({ messages, tools: cleanTools(body.tools), system: 'You are the helper inside Focus Flow, a personal planner. Follow the instructions in the first message. Keep replies short and kind.' });
     return { status: 200, body: { content: r.content, stop_reason: r.stop_reason, left: Math.max(0, limit - used) } };
-  } catch (e) { console.error('ai failed', String(e)); return { status: 502, body: { error: 'ai_failed' } }; }
+  } catch (e) { console.error('ai failed', String(e)); return { status: 502, body: { error: e && e.busy ? 'ai_busy' : 'ai_failed' } }; }
 }
 
 // Translate between the app's message format (Anthropic style) and the OpenAI-compatible format that
@@ -309,6 +309,25 @@ function fromOpenAI(res) {
   return { content, stop_reason: (msg.tool_calls && msg.tool_calls.length) ? 'tool_use' : fin === 'length' ? 'max_tokens' : 'end_turn' };
 }
 
+// Free AI services are sometimes "busy" (503) or rate-limited (429). Try again once, then the next model in the list.
+async function withFallback(models, call, sleep = (ms) => new Promise((r) => setTimeout(r, ms))) {
+  let last = null, busy = false;
+  for (const model of models) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try { return await call(model); }
+      catch (e) {
+        last = e;
+        const retry = e && [429, 500, 502, 503, 504].includes(e.status);
+        if (retry) busy = true;
+        if (!retry) throw e;
+        if (attempt === 0) await sleep(700);
+      }
+    }
+  }
+  if (last) last.busy = busy;
+  throw last || new Error('no model');
+}
+
 // Public values have built-in defaults; only the three real secrets (VAPID_PRIVATE_KEY, SMTP_USER, SMTP_PASS) need to be set.
 const DEFAULTS: Record<string, string> = {
   SMTP_HOST: "smtp.gmail.com", SMTP_PORT: "465",
@@ -338,13 +357,16 @@ const ai = {
     }
     const base = (env("AI_BASE_URL") || "https://generativelanguage.googleapis.com/v1beta/openai").replace(/\/+$/, "");
     const t = toOpenAI(system, messages, tools);
-    const res = await fetch(base + "/chat/completions", {
-      method: "POST", signal: AbortSignal.timeout(50000),
-      headers: { "content-type": "application/json", authorization: "Bearer " + env("AI_API_KEY") },
-      body: JSON.stringify({ model: env("AI_MODEL") || "gemini-flash-latest", max_tokens: 700, ...t }),
+    const models = (env("AI_MODEL") || "gemini-flash-latest,gemini-flash-lite-latest").split(",").map((x: string) => x.trim()).filter(Boolean);
+    return await withFallback(models, async (model: string) => {
+      const res = await fetch(base + "/chat/completions", {
+        method: "POST", signal: AbortSignal.timeout(25000),
+        headers: { "content-type": "application/json", authorization: "Bearer " + env("AI_API_KEY") },
+        body: JSON.stringify({ model, max_tokens: 700, ...t }),
+      });
+      if (!res.ok) { const er: any = new Error("ai " + res.status + " " + model + " " + (await res.text()).slice(0, 200)); er.status = res.status; throw er; }
+      return fromOpenAI(await res.json());
     });
-    if (!res.ok) throw new Error("ai " + res.status + " " + (await res.text()).slice(0, 200));
-    return fromOpenAI(await res.json());
   },
 };
 const ok = (r) => { if (r.error) throw new Error(r.error.message); return r.data; };

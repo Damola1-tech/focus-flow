@@ -154,7 +154,7 @@ export async function handleCoach(deps, uid, body, env = {}, now = Date.now()) {
   try {
     const r = await ai.complete({ messages, tools: cleanTools(body.tools), system: 'You are the helper inside Focus Flow, a personal planner. Follow the instructions in the first message. Keep replies short and kind.' });
     return { status: 200, body: { content: r.content, stop_reason: r.stop_reason, left: Math.max(0, limit - used) } };
-  } catch (e) { console.error('ai failed', String(e)); return { status: 502, body: { error: 'ai_failed' } }; }
+  } catch (e) { console.error('ai failed', String(e)); return { status: 502, body: { error: e && e.busy ? 'ai_busy' : 'ai_failed' } }; }
 }
 
 // Translate between the app's message format (Anthropic style) and the OpenAI-compatible format that
@@ -187,4 +187,23 @@ export function fromOpenAI(res) {
   }
   const fin = ch && ch.finish_reason;
   return { content, stop_reason: (msg.tool_calls && msg.tool_calls.length) ? 'tool_use' : fin === 'length' ? 'max_tokens' : 'end_turn' };
+}
+
+// Free AI services are sometimes "busy" (503) or rate-limited (429). Try again once, then the next model in the list.
+export async function withFallback(models, call, sleep = (ms) => new Promise((r) => setTimeout(r, ms))) {
+  let last = null, busy = false;
+  for (const model of models) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try { return await call(model); }
+      catch (e) {
+        last = e;
+        const retry = e && [429, 500, 502, 503, 504].includes(e.status);
+        if (retry) busy = true;
+        if (!retry) throw e;
+        if (attempt === 0) await sleep(700);
+      }
+    }
+  }
+  if (last) last.busy = busy;
+  throw last || new Error('no model');
 }

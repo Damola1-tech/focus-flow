@@ -336,6 +336,7 @@ function sbAiErr(e) {
   if (e && e.status === 429) return { code: 'rate_limited', reason: 'usage_limit' };
   if (e && e.status === 503) return { code: 'not_granted' };
   if (e && e.status === 401) return { code: 'session_expired' };
+  if (e && e.status === 502 && e.body && e.body.error === 'ai_busy') return { code: 'busy' };
   return { code: 'failed', message: e && e.message };
 }
 function sbSample() {

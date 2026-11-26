@@ -1,4 +1,4 @@
-import { runCron, handleInvite, handleDelete, handleTest, handleCoach, handleCoachStatus, cleanMessages, toOpenAI, fromOpenAI } from '../supabase/functions/focusflow/handlers.js';
+import { runCron, handleInvite, handleDelete, handleTest, handleCoach, handleCoachStatus, cleanMessages, toOpenAI, fromOpenAI, withFallback } from '../supabase/functions/focusflow/handlers.js';
 let fails = 0; const ok = (n, c, x) => { console.log((c ? 'PASS ' : 'FAIL ') + n + (c ? '' : ' ' + JSON.stringify(x))); if (!c) fails++; };
 const NOW = Date.UTC(2026, 10, 25, 8, 51);   // 09:51 in Lagos
 function world() {
@@ -151,5 +151,21 @@ ok('t1 test alert reaches phone and email', x.sent === 2 && w.sentMail.length ==
   ok('o8 broken arguments do not crash', f.content[0].input && Object.keys(f.content[0].input).length === 0, f);
   ok('o9 cut-off answers are flagged', fromOpenAI({ choices: [{ message: { content: 'a' }, finish_reason: 'length' }] }).stop_reason === 'max_tokens');
   ok('o10 empty reply does not crash', fromOpenAI({}).content.length === 0);
+}
+// ---- busy AI service: retry, then next model
+{
+  const never = async () => {}; const err = (st) => Object.assign(new Error('x' + st), { status: st });
+  const seen = [];
+  let r3 = await withFallback(['a', 'b'], async (m) => { seen.push(m); if (m === 'a') throw err(503); return 'ok-' + m; }, never);
+  ok('f1 busy first model falls back to the second (after one retry)', r3 === 'ok-b' && seen.join() === 'a,a,b', seen);
+  seen.length = 0; r3 = await withFallback(['a'], async () => { seen.push(1); if (seen.length === 1) throw err(503); return 'fine'; }, never);
+  ok('f2 one retry can succeed', r3 === 'fine' && seen.length === 2);
+  let e3; try { await withFallback(['a', 'b'], async () => { throw err(503); }, never); } catch (e) { e3 = e; }
+  ok('f3 all busy is flagged busy', e3 && e3.busy === true);
+  e3 = null; let n = 0; try { await withFallback(['a', 'b'], async () => { n++; throw err(401); }, never); } catch (e) { e3 = e; }
+  ok('f4 a bad key is not retried', e3 && e3.status === 401 && n === 1 && !e3.busy, n);
+  const w5 = world(); w5.store.aiUse = async () => 1; w5.deps.ai = { enabled: true, complete: async () => { throw Object.assign(new Error('b'), { busy: true }); } };
+  const rr = await handleCoach(w5.deps, 'u1', { messages: [{ role: 'user', content: 'x' }] }, {});
+  ok('f5 busy comes back as ai_busy', rr.status === 502 && rr.body.error === 'ai_busy', rr);
 }
 console.log('FAILS:', fails); process.exit(fails ? 1 : 0);

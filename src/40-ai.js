@@ -15,6 +15,7 @@ function aiErr(e) {
   if (c === 'cancelled') return '';
   if (c === 'not_granted' || c === 'sampling_disabled' || c === 'not_declared' || c === 'capability_disabled' || c === 'capability_removed') { AI.available = false; return 'The AI helper is not available for your account on this page.'; }
   if (c === 'rate_limited') return e.reason === 'usage_limit' ? 'You have used the AI helper\'s allowance for today. It resets tomorrow.' : 'That was too quick. Wait a moment and try again.';
+  if (c === 'busy') return 'The free AI service is busy right now. Wait a minute and try again.';
   if (c === 'session_expired') return 'Please sign in to Claude again, then retry.';
   if (c === 'invalid_json') return 'The AI answered in a way I could not use. Try rephrasing.';
   return 'The AI helper could not answer just now. Please try again.';
