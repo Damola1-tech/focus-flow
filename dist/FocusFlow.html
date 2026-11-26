@@ -2381,7 +2381,7 @@ function viewCoach() {
     (on ? '<div class="chips">' + chips.map(function (c) { return '<button class="chip" ' + (U.coachBusy ? 'disabled ' : '') + 'data-a="coachAsk" data-q="' + esc(c[1]) + '">' + esc(c[0]) + '</button>'; }).join('') + '</div>' +
       '<form data-f="coach" class="card"><div class="field"><label for="coachBox">Message</label><textarea id="coachBox" rows="2" maxlength="1500" placeholder="e.g. Add a 20 minute walk at 5pm today"' + (U.coachBusy ? ' disabled' : '') + '></textarea></div>' +
       '<div class="row">' + micBtn('coachBox') + (U.coachBusy ? '<button type="button" class="btn" data-a="coachStop">Stop</button>' : '<button class="btn primary" type="submit">Send</button>') + '</div>' +
-      '<span class="small muted">When you send a message, your tasks for today and tomorrow, goals and mood check-in are sent to Claude (made by Anthropic) so it can answer. Nothing is sent otherwise.</span></form>' : '');
+      '<span class="small muted">When you send a message, your tasks for today and tomorrow, goals and mood check-in are sent to an outside AI service so it can answer. Do not type anything you want kept private. Nothing is sent otherwise.</span></form>' : '');
 }
 Object.assign(A, {
   coachAsk: function (el) { U.view = 'coach'; if (U.overlay) { U.overlay = null; renderOverlay(); } render(); window.scrollTo(0, 0); sendCoach(el.dataset.q); },

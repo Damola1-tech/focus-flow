@@ -3,7 +3,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
 import nodemailer from "npm:nodemailer@6.9.14";
-import { runCron, handleTest, handleInvite, handleDelete, handleCoach, handleCoachStatus } from "./handlers.js";
+import { runCron, handleTest, handleInvite, handleDelete, handleCoach, handleCoachStatus, toOpenAI, fromOpenAI } from "./handlers.js";
 
 // Public values have built-in defaults; only the three real secrets (VAPID_PRIVATE_KEY, SMTP_USER, SMTP_PASS) need to be set.
 const DEFAULTS: Record<string, string> = {
@@ -18,16 +18,29 @@ const transport = env("SMTP_HOST") ? nodemailer.createTransport({ host: env("SMT
 
 const mail = { enabled: !!transport, send: ({ to, subject, text }) => transport.sendMail({ from: env("MAIL_FROM") || ("Focus Flow <" + env("SMTP_USER") + ">"), to, subject, text }) };
 const push = { send: (sub, payload) => webpush.sendNotification(sub, JSON.stringify(payload), { TTL: 900 }) };
+// The AI helper. Works with a free Google Gemini key by default (AI_API_KEY), or any OpenAI-compatible service
+// (AI_BASE_URL + AI_MODEL, for example Groq), or an Anthropic key (ANTHROPIC_API_KEY).
 const ai = {
-  enabled: !!env("ANTHROPIC_API_KEY"),
+  enabled: !!(env("ANTHROPIC_API_KEY") || env("AI_API_KEY")),
   complete: async ({ messages, tools, system }) => {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    if (env("ANTHROPIC_API_KEY")) {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST", signal: AbortSignal.timeout(50000),
+        headers: { "content-type": "application/json", "x-api-key": env("ANTHROPIC_API_KEY"), "anthropic-version": "2023-06-01" },
+        body: JSON.stringify({ model: env("AI_MODEL") || "claude-sonnet-5-5", max_tokens: 700, system, messages, ...(tools.length ? { tools } : {}) }),
+      });
+      if (!res.ok) throw new Error("anthropic " + res.status + " " + (await res.text()).slice(0, 200));
+      return await res.json();
+    }
+    const base = (env("AI_BASE_URL") || "https://generativelanguage.googleapis.com/v1beta/openai").replace(/\/+$/, "");
+    const t = toOpenAI(system, messages, tools);
+    const res = await fetch(base + "/chat/completions", {
       method: "POST", signal: AbortSignal.timeout(50000),
-      headers: { "content-type": "application/json", "x-api-key": env("ANTHROPIC_API_KEY"), "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model: env("COACH_MODEL") || "claude-sonnet-5-5", max_tokens: 700, system, messages, ...(tools.length ? { tools } : {}) }),
+      headers: { "content-type": "application/json", authorization: "Bearer " + env("AI_API_KEY") },
+      body: JSON.stringify({ model: env("AI_MODEL") || "gemini-flash-latest", max_tokens: 700, ...t }),
     });
-    if (!res.ok) throw new Error("anthropic " + res.status + " " + (await res.text()).slice(0, 200));
-    return await res.json();
+    if (!res.ok) throw new Error("ai " + res.status + " " + (await res.text()).slice(0, 200));
+    return fromOpenAI(await res.json());
   },
 };
 const ok = (r) => { if (r.error) throw new Error(r.error.message); return r.data; };

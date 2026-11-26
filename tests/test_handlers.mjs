@@ -1,4 +1,4 @@
-import { runCron, handleInvite, handleDelete, handleTest, handleCoach, handleCoachStatus, cleanMessages } from '../supabase/functions/focusflow/handlers.js';
+import { runCron, handleInvite, handleDelete, handleTest, handleCoach, handleCoachStatus, cleanMessages, toOpenAI, fromOpenAI } from '../supabase/functions/focusflow/handlers.js';
 let fails = 0; const ok = (n, c, x) => { console.log((c ? 'PASS ' : 'FAIL ') + n + (c ? '' : ' ' + JSON.stringify(x))); if (!c) fails++; };
 const NOW = Date.UTC(2026, 10, 25, 8, 51);   // 09:51 in Lagos
 function world() {
@@ -133,5 +133,23 @@ ok('t1 test alert reaches phone and email', x.sent === 2 && w.sentMail.length ==
   const tm = cleanMessages([{ role: 'user', content: 'q' }, { role: 'assistant', content: [{ type: 'tool_use', id: 't1', name: 'add_task', input: { title: 'a' } }] }, { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: '{"ok":true}' }] }]);
   ok('c9 tool-use turns are accepted', tm && tm.length === 3 && tm[1].content[0].type === 'tool_use', tm);
   ok('c10 unknown block types are refused', cleanMessages([{ role: 'user', content: [{ type: 'image', source: {} }] }]) === null);
+}
+// ---- OpenAI-compatible translation (Gemini, Groq, ...)
+{
+  const t = toOpenAI('SYS', [{ role: 'user', content: 'plan' }, { role: 'assistant', content: [{ type: 'text', text: 'ok' }, { type: 'tool_use', id: 'c1', name: 'add_task', input: { title: 'a' } }] }, { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'c1', content: '{"ok":true}' }] }],
+    [{ name: 'add_task', description: 'd', input_schema: { type: 'object', properties: {} } }]);
+  ok('o1 system first, then turns in order', t.messages[0].role === 'system' && t.messages[1].content === 'plan' && t.messages.length === 4, t.messages);
+  ok('o2 tool call is translated with JSON arguments', t.messages[2].tool_calls[0].function.arguments === '{"title":"a"}' && t.messages[2].tool_calls[0].id === 'c1', t.messages[2]);
+  ok('o3 tool result becomes a tool message', t.messages[3].role === 'tool' && t.messages[3].tool_call_id === 'c1', t.messages[3]);
+  ok('o4 tools become functions', t.tools[0].type === 'function' && t.tools[0].function.name === 'add_task' && t.tools[0].function.parameters.type === 'object', t.tools);
+  ok('o5 no tools key when none', !('tools' in toOpenAI('', [{ role: 'user', content: 'x' }], [])));
+  let f = fromOpenAI({ choices: [{ message: { content: 'Hello' }, finish_reason: 'stop' }] });
+  ok('o6 plain answer', f.stop_reason === 'end_turn' && f.content[0].text === 'Hello', f);
+  f = fromOpenAI({ choices: [{ message: { content: null, tool_calls: [{ id: 'z', function: { name: 'add_task', arguments: '{"title":"w","minutes":20}' } }] }, finish_reason: 'tool_calls' }] });
+  ok('o7 tool call answer', f.stop_reason === 'tool_use' && f.content[0].type === 'tool_use' && f.content[0].input.minutes === 20, f);
+  f = fromOpenAI({ choices: [{ message: { tool_calls: [{ function: { name: 'x', arguments: 'not json' } }] } }] });
+  ok('o8 broken arguments do not crash', f.content[0].input && Object.keys(f.content[0].input).length === 0, f);
+  ok('o9 cut-off answers are flagged', fromOpenAI({ choices: [{ message: { content: 'a' }, finish_reason: 'length' }] }).stop_reason === 'max_tokens');
+  ok('o10 empty reply does not crash', fromOpenAI({}).content.length === 0);
 }
 console.log('FAILS:', fails); process.exit(fails ? 1 : 0);

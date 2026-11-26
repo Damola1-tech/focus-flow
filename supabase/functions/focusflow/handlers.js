@@ -156,3 +156,35 @@ export async function handleCoach(deps, uid, body, env = {}, now = Date.now()) {
     return { status: 200, body: { content: r.content, stop_reason: r.stop_reason, left: Math.max(0, limit - used) } };
   } catch (e) { console.error('ai failed', String(e)); return { status: 502, body: { error: 'ai_failed' } }; }
 }
+
+// Translate between the app's message format (Anthropic style) and the OpenAI-compatible format that
+// Google Gemini, Groq, OpenRouter and others speak. Pure functions so they can be tested.
+export function toOpenAI(system, messages, tools) {
+  const out = [];
+  if (system) out.push({ role: 'system', content: system });
+  for (const m of messages) {
+    if (typeof m.content === 'string') { out.push({ role: m.role, content: m.content }); continue; }
+    if (m.role === 'assistant') {
+      const text = m.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+      const calls = m.content.filter((b) => b.type === 'tool_use').map((b) => ({ id: b.id, type: 'function', function: { name: b.name, arguments: JSON.stringify(b.input || {}) } }));
+      out.push({ role: 'assistant', content: text || null, ...(calls.length ? { tool_calls: calls } : {}) });
+    } else {
+      for (const b of m.content) {
+        if (b.type === 'tool_result') out.push({ role: 'tool', tool_call_id: b.tool_use_id, content: b.content });
+        else if (b.type === 'text') out.push({ role: 'user', content: b.text });
+      }
+    }
+  }
+  const fns = (tools || []).map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema } }));
+  return { messages: out, ...(fns.length ? { tools: fns } : {}) };
+}
+export function fromOpenAI(res) {
+  const ch = res && res.choices && res.choices[0], msg = (ch && ch.message) || {}, content = [];
+  if (msg.content) content.push({ type: 'text', text: String(msg.content) });
+  for (const c of msg.tool_calls || []) {
+    let input = {}; try { input = JSON.parse((c.function && c.function.arguments) || '{}'); } catch (e) { }
+    content.push({ type: 'tool_use', id: c.id || `call_${content.length}`, name: c.function && c.function.name, input });
+  }
+  const fin = ch && ch.finish_reason;
+  return { content, stop_reason: (msg.tool_calls && msg.tool_calls.length) ? 'tool_use' : fin === 'length' ? 'max_tokens' : 'end_turn' };
+}
