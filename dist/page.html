@@ -2573,16 +2573,17 @@ function remindTick() {
   try { var tz0 = Intl.DateTimeFormat().resolvedOptions().timeZone; if (tz0 && d.settings.tz !== tz0) { d.settings.tz = tz0; save(); } } catch (e) { }
   var s = d.settings, date = todayStr(), nm = nowMin(); d.sn = d.sn || {};
   if (d.snDay !== date) { d.sn = {}; d.snDay = date; save(); }
-  if (inQuiet(s) || U.flow === 'checkin') return;
+  if (U.flow === 'checkin') return;
+  var quiet = inQuiet(s);
   if (s.remindStart > 0) {
     tasks().forEach(function (t) {
       if (t.date !== date || t.status !== 'todo' || !t.time) return;
       var st = toMin(t.time), key = 's' + t.id + t.time, late = 'l' + key;
       if (!d.sn[key] && nm >= st - s.remindStart && nm < st) { d.sn[key] = 1; save(); notify('Starting soon: ' + t.title + ' at ' + fmtTime12(t.time) + '.'); }
-      else if (!d.sn[late] && nm >= st + 10 && nm < st + 45 && !(d.active && d.active.taskId === t.id)) { d.sn[late] = 1; save(); notify(t.title + ' was planned for ' + fmtTime12(t.time) + '. Start it now, or move it?'); }
+      else if (!quiet && !d.sn[late] && nm >= st + 10 && nm < st + 45 && !(d.active && d.active.taskId === t.id)) { d.sn[late] = 1; save(); notify(t.title + ' was planned for ' + fmtTime12(t.time) + '. Start it now, or move it?'); }
     });
   }
-  if (s.checkinEvery > 0 && nm >= 480) {
+  if (!quiet && s.checkinEvery > 0 && nm >= 480) {
     var slot = Math.floor(nm / s.checkinEvery), key = 'c' + slot;
     if (!d.sn[key] && nm - slot * s.checkinEvery < 5) {
       d.sn[key] = 1;

@@ -34,7 +34,9 @@ function dueReminders({ core, tasks, nowMs }) {
   const out = [];
   const s = (core && core.settings) || {};
   const { date, min } = localNow(nowMs, s.tz);
-  if (inQuiet(s, min)) return out;
+  // Quiet hours hold back the automatic nags ("still to start"). Things the person set up themselves still arrive:
+  // a task with a start time they chose, and the "get back to it" reminder after a pause.
+  const quiet = inQuiet(s, min);
   const remindStart = s.remindStart === undefined ? 10 : +s.remindStart;
   const active = core && core.active && core.active.taskId;
   if (remindStart > 0) {
@@ -42,7 +44,7 @@ function dueReminders({ core, tasks, nowMs }) {
       if (!t || t.date !== date || t.status !== 'todo' || !t.time) return;
       const st = toMin(t.time), base = `${t.id}:${date}:${t.time}`;
       if (min >= st - remindStart && min < st) out.push({ key: `s:${base}`, title: 'Starting soon', body: `${t.title} at ${fmt12(t.time)}.` });
-      else if (min >= st + 10 && min < st + 45 && active !== t.id) out.push({ key: `l:${base}`, title: 'Still to start', body: `${t.title} was planned for ${fmt12(t.time)}. Start it now, or move it?` });
+      else if (!quiet && min >= st + 10 && min < st + 45 && active !== t.id) out.push({ key: `l:${base}`, title: 'Still to start', body: `${t.title} was planned for ${fmt12(t.time)}. Start it now, or move it?` });
     });
   }
   ((core && core.reminders) || []).forEach((r) => {
@@ -317,9 +319,11 @@ async function withFallback(models, call, sleep = (ms) => new Promise((r) => set
       try { return await call(model); }
       catch (e) {
         last = e;
-        const retry = e && [429, 500, 502, 503, 504].includes(e.status);
-        if (retry) busy = true;
+        const slow = e && (e.name === 'TimeoutError' || e.name === 'AbortError');      // too slow: go straight to the next model
+        const retry = slow || !e || e.status === undefined || [429, 500, 502, 503, 504].includes(e.status);
         if (!retry) throw e;
+        busy = true;
+        if (slow) break;
         if (attempt === 0) await sleep(700);
       }
     }
@@ -357,10 +361,10 @@ const ai = {
     }
     const base = (env("AI_BASE_URL") || "https://generativelanguage.googleapis.com/v1beta/openai").replace(/\/+$/, "");
     const t = toOpenAI(system, messages, tools);
-    const models = (env("AI_MODEL") || "gemini-flash-latest,gemini-flash-lite-latest").split(",").map((x: string) => x.trim()).filter(Boolean);
+    const models = (env("AI_MODEL") || "gemini-flash-lite-latest,gemini-flash-latest").split(",").map((x: string) => x.trim()).filter(Boolean);
     return await withFallback(models, async (model: string) => {
       const res = await fetch(base + "/chat/completions", {
-        method: "POST", signal: AbortSignal.timeout(25000),
+        method: "POST", signal: AbortSignal.timeout(20000),
         headers: { "content-type": "application/json", authorization: "Bearer " + env("AI_API_KEY") },
         body: JSON.stringify({ model, max_tokens: 700, ...t }),
       });
@@ -419,7 +423,15 @@ Deno.serve(async (req) => {
     if (given) {
       // the schedule proves itself with a secret that lives only inside the database (app_config.cron_secret)
       const row = await admin.from("app_config").select("value").eq("key", "cron_secret").maybeSingle();
-      if (row.data?.value && row.data.value === given) return json(await runCron(deps));
+      if (row.data?.value && row.data.value === given) {
+        const b = await req.json().catch(() => ({}));
+        if (b.action === "aiTest") {   // maintenance check: does the AI service answer, and how fast
+          const t0 = Date.now();
+          try { const r = await ai.complete({ messages: [{ role: "user", content: "Reply with the single word: ready" }], tools: [], system: "Be brief." }); return json({ ok: true, ms: Date.now() - t0, text: JSON.stringify(r.content).slice(0, 200) }); }
+          catch (e) { return json({ ok: false, ms: Date.now() - t0, error: String(e).slice(0, 300) }); }
+        }
+        return json(await runCron(deps));
+      }
       return json({ error: "bad secret" }, 401);
     }
     const token = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");

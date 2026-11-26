@@ -163,6 +163,8 @@ ok('t1 test alert reaches phone and email', x.sent === 2 && w.sentMail.length ==
   let e3; try { await withFallback(['a', 'b'], async () => { throw err(503); }, never); } catch (e) { e3 = e; }
   ok('f3 all busy is flagged busy', e3 && e3.busy === true);
   e3 = null; let n = 0; try { await withFallback(['a', 'b'], async () => { n++; throw err(401); }, never); } catch (e) { e3 = e; }
+  seen.length = 0; r3 = await withFallback(['a', 'b'], async (m) => { seen.push(m); if (m === 'a') throw Object.assign(new Error('t'), { name: 'TimeoutError' }); return 'ok'; }, never);
+  ok('f6 a slow model is skipped without a second try', r3 === 'ok' && seen.join() === 'a,b', seen);
   ok('f4 a bad key is not retried', e3 && e3.status === 401 && n === 1 && !e3.busy, n);
   const w5 = world(); w5.store.aiUse = async () => 1; w5.deps.ai = { enabled: true, complete: async () => { throw Object.assign(new Error('b'), { busy: true }); } };
   const rr = await handleCoach(w5.deps, 'u1', { messages: [{ role: 'user', content: 'x' }] }, {});

@@ -34,10 +34,10 @@ const ai = {
     }
     const base = (env("AI_BASE_URL") || "https://generativelanguage.googleapis.com/v1beta/openai").replace(/\/+$/, "");
     const t = toOpenAI(system, messages, tools);
-    const models = (env("AI_MODEL") || "gemini-flash-latest,gemini-flash-lite-latest").split(",").map((x: string) => x.trim()).filter(Boolean);
+    const models = (env("AI_MODEL") || "gemini-flash-lite-latest,gemini-flash-latest").split(",").map((x: string) => x.trim()).filter(Boolean);
     return await withFallback(models, async (model: string) => {
       const res = await fetch(base + "/chat/completions", {
-        method: "POST", signal: AbortSignal.timeout(25000),
+        method: "POST", signal: AbortSignal.timeout(20000),
         headers: { "content-type": "application/json", authorization: "Bearer " + env("AI_API_KEY") },
         body: JSON.stringify({ model, max_tokens: 700, ...t }),
       });
@@ -96,7 +96,15 @@ Deno.serve(async (req) => {
     if (given) {
       // the schedule proves itself with a secret that lives only inside the database (app_config.cron_secret)
       const row = await admin.from("app_config").select("value").eq("key", "cron_secret").maybeSingle();
-      if (row.data?.value && row.data.value === given) return json(await runCron(deps));
+      if (row.data?.value && row.data.value === given) {
+        const b = await req.json().catch(() => ({}));
+        if (b.action === "aiTest") {   // maintenance check: does the AI service answer, and how fast
+          const t0 = Date.now();
+          try { const r = await ai.complete({ messages: [{ role: "user", content: "Reply with the single word: ready" }], tools: [], system: "Be brief." }); return json({ ok: true, ms: Date.now() - t0, text: JSON.stringify(r.content).slice(0, 200) }); }
+          catch (e) { return json({ ok: false, ms: Date.now() - t0, error: String(e).slice(0, 300) }); }
+        }
+        return json(await runCron(deps));
+      }
       return json({ error: "bad secret" }, 401);
     }
     const token = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");

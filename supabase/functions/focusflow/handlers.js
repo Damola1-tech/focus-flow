@@ -197,9 +197,11 @@ export async function withFallback(models, call, sleep = (ms) => new Promise((r)
       try { return await call(model); }
       catch (e) {
         last = e;
-        const retry = e && [429, 500, 502, 503, 504].includes(e.status);
-        if (retry) busy = true;
+        const slow = e && (e.name === 'TimeoutError' || e.name === 'AbortError');      // too slow: go straight to the next model
+        const retry = slow || !e || e.status === undefined || [429, 500, 502, 503, 504].includes(e.status);
         if (!retry) throw e;
+        busy = true;
+        if (slow) break;
         if (attempt === 0) await sleep(700);
       }
     }

@@ -15,7 +15,9 @@ ok('l6 late nudge 10 to 45 min after', r.length === 1 && r[0].key.startsWith('l:
 ok('l7 no late nudge if that task is running', dueReminders({ core: { ...core(), active: { taskId: 't1' } }, tasks: [task()], nowMs: at(9, 15) }).length === 0);
 ok('l8 done tasks are skipped', dueReminders({ core: core(), tasks: [task({ status: 'done' })], nowMs: at(8, 55) }).length === 0);
 ok('l9 other days are skipped', dueReminders({ core: core(), tasks: [task({ date: '2026-11-25' })], nowMs: at(8, 55) }).length === 0);
-ok('l10 quiet hours hold everything back', dueReminders({ core: core({ quietFrom: '08:00', quietTo: '10:00' }), tasks: [task()], nowMs: at(8, 55) }).length === 0);
+ok('l10 quiet hours still let a start time the person chose through', dueReminders({ core: core({ quietFrom: '08:00', quietTo: '10:00' }), tasks: [task()], nowMs: at(8, 55) }).length === 1);
+ok('l10b quiet hours hold back the late nag', dueReminders({ core: core({ quietFrom: '08:00', quietTo: '10:00' }), tasks: [task()], nowMs: at(9, 15) }).length === 0);
+ok('l10c a pause reminder arrives during quiet hours', dueReminders({ core: { ...core({ quietFrom: '08:00', quietTo: '10:00' }), reminders: [{ id: 'q1', at: at(8, 58), text: 'back?', fired: false }] }, tasks: [], nowMs: at(9, 0) }).length === 1);
 ok('l11 quiet hours across midnight', inQuiet({ quietFrom: '22:00', quietTo: '07:00' }, 23 * 60) && inQuiet({ quietFrom: '22:00', quietTo: '07:00' }, 6 * 60) && !inQuiet({ quietFrom: '22:00', quietTo: '07:00' }, 12 * 60));
 const k1 = dueReminders({ core: core(), tasks: [task()], nowMs: at(8, 51) })[0].key, k2 = dueReminders({ core: core(), tasks: [task()], nowMs: at(8, 58) })[0].key;
 ok('l12 same task gives the same key all window (so it is sent once)', k1 === k2, [k1, k2]);

@@ -26,7 +26,9 @@ export function dueReminders({ core, tasks, nowMs }) {
   const out = [];
   const s = (core && core.settings) || {};
   const { date, min } = localNow(nowMs, s.tz);
-  if (inQuiet(s, min)) return out;
+  // Quiet hours hold back the automatic nags ("still to start"). Things the person set up themselves still arrive:
+  // a task with a start time they chose, and the "get back to it" reminder after a pause.
+  const quiet = inQuiet(s, min);
   const remindStart = s.remindStart === undefined ? 10 : +s.remindStart;
   const active = core && core.active && core.active.taskId;
   if (remindStart > 0) {
@@ -34,7 +36,7 @@ export function dueReminders({ core, tasks, nowMs }) {
       if (!t || t.date !== date || t.status !== 'todo' || !t.time) return;
       const st = toMin(t.time), base = `${t.id}:${date}:${t.time}`;
       if (min >= st - remindStart && min < st) out.push({ key: `s:${base}`, title: 'Starting soon', body: `${t.title} at ${fmt12(t.time)}.` });
-      else if (min >= st + 10 && min < st + 45 && active !== t.id) out.push({ key: `l:${base}`, title: 'Still to start', body: `${t.title} was planned for ${fmt12(t.time)}. Start it now, or move it?` });
+      else if (!quiet && min >= st + 10 && min < st + 45 && active !== t.id) out.push({ key: `l:${base}`, title: 'Still to start', body: `${t.title} was planned for ${fmt12(t.time)}. Start it now, or move it?` });
     });
   }
   ((core && core.reminders) || []).forEach((r) => {
