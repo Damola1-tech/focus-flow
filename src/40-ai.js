@@ -86,7 +86,7 @@ async function sendCoach(text) {
   if (U.view === 'coach' || U.coachDid.length) render();
   if (U.view === 'coach') coachScroll();
 }
-function coachScroll() { var el = $('#coachEnd'); if (el && el.scrollIntoView) { try { el.scrollIntoView({ block: 'end' }); } catch (e) { } } }
+function coachScroll() { var el = $('#coachEnd'), box = el && el.parentElement; if (box) { try { box.scrollTop = box.scrollHeight; } catch (e) { } } }
 function viewCoach() {
   var d = D(), L = d.chat || [], on = aiOn();
   var bub = function (m) {

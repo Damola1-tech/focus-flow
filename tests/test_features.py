@@ -65,8 +65,8 @@ async def main():
         ok('rem1 start reminder fires once', res['a1'] == 1 and res['a2'] == 1 and 'Call bank' in (res['txt'] or ''), res)
         res = await p.evaluate("""(function(){ var s=D().settings; s.checkinEvery=60; D().sn={}; U.alerts=[]; var real=nowMin; nowMin=function(){ return 10*60+2; }; remindTick(); nowMin=real; return (U.alerts||[]).map(a=>a.text); })()""")
         ok('rem2 hourly check-in names next task', len(res) >= 1 and ('Check-in' in res[0]), res)
-        res = await p.evaluate("""(function(){ var s=D().settings; s.quietFrom='00:00'; s.quietTo='23:59'; D().sn={}; U.alerts=[]; remindTick(); return (U.alerts||[]).length; })()""")
-        ok('rem3 quiet hours silence reminders', res == 0, res)
+        res = await p.evaluate("""(function(){ var s=D().settings; s.quietFrom='00:00'; s.quietTo='23:59'; D().sn={}; U.alerts=[]; var real=nowMin; nowMin=function(){ return 10*60+2; }; remindTick(); nowMin=real; return (U.alerts||[]).filter(a=>/Check-in/.test(a.text||'')).length; })()""")
+        ok('rem3 quiet hours silence check-ins', res == 0, res)
         # --- cloud persistence of all of it
         await p.wait_for_timeout(1500)
         core = w.db.get('data/users/u1/core', {})

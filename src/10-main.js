@@ -657,7 +657,7 @@ function viewSettings() {
   var f = '<form class="card" data-f="settings"><h2>Your profile</h2>' +
     '<div class="field"><label for="sName">Name</label><input id="sName" type="text" required value="' + esc(p.name) + '"></div>' +
     '<div class="field"><label for="sEmail2">Email (for reminders later)</label><input id="sEmail2" type="email" value="' + esc(p.email || '') + '"></div>' +
-    '<div class="field"><span class="lbl">Choose your look</span><div class="chips" data-single>' + THEMES.map(swatchHtml(p.color)).join('') + '</div></div>' +
+    '<div class="field"><span class="lbl">Colour</span><div class="swrow" data-single>' + THEMES.map(function (t) { return '<span class="swcol">' + swatchHtml(p.color)(t) + t.n + '</span>'; }).join('') + '</div><span class="small muted">Changes show straight away. Press Save settings to keep them.</span></div>' +
     '<div class="field"><span class="lbl">Appearance</span><div class="seg" data-single>' + [['system', 'Match device'], ['light', 'Light'], ['dark', 'Dark']].map(function (m) { return segBtn(m[1], s.theme === m[0], 'theme', m[0]); }).join('') + '</div></div>' +
     '<div class="field"><span class="lbl">Daily message</span><div class="seg" data-single>' + [['motivation', 'Motivation'], ['bible', 'Bible verse'], ['none', 'None']].map(function (m) { return segBtn(m[1], s.message === m[0], 'msg', m[0]); }).join('') + '</div></div>' +
     '<h2 style="margin-top:8px">Work schedule</h2><span class="small muted">Tick the days you work and set the hours. Focus Flow never plans tasks inside a shift. Overnight shifts work too: set the end earlier than the start.</span>' +
@@ -1171,10 +1171,11 @@ var A = {
     if (par && par.hasAttribute('data-single')) {
       Array.prototype.forEach.call(par.querySelectorAll('[data-a="chip"]'), function (b) { b.setAttribute('aria-pressed', 'false'); });
       el.setAttribute('aria-pressed', 'true');
+      if (el.dataset.g === 'theme') { var rt = document.documentElement; if (el.dataset.val === 'system') rt.removeAttribute('data-theme'); else rt.setAttribute('data-theme', el.dataset.val); }
     } else el.setAttribute('aria-pressed', el.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
   },
   swatch: function (el) {
-    Array.prototype.forEach.call(el.parentElement.querySelectorAll('[data-a="swatch"]'), function (b) { b.setAttribute('aria-pressed', 'false'); });
+    Array.prototype.forEach.call((el.closest('[data-single]') || el.parentElement).querySelectorAll('[data-a="swatch"]'), function (b) { b.setAttribute('aria-pressed', 'false'); });
     el.setAttribute('aria-pressed', 'true');
     var k = themeOf(el.dataset.val).k; if (k === 'indigo') document.documentElement.removeAttribute('data-accent'); else document.documentElement.setAttribute('data-accent', k);
   },

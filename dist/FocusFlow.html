@@ -164,7 +164,7 @@ pre.box{margin:0;padding:12px;border-radius:12px;background:var(--bg);border:1px
 .shiftrow .check{flex:0 0 74px}
 .shiftrow input[type=time]{width:auto;flex:1 1 0;min-width:0;padding-left:8px;padding-right:6px;font-size:15px}
 /* coach */
-.chat{display:flex;flex-direction:column;gap:10px;min-height:160px}
+.chat{display:flex;flex-direction:column;gap:10px;min-height:160px;max-height:min(58vh,520px);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 .bub{max-width:88%;padding:10px 14px;border-radius:16px;white-space:pre-wrap;line-height:1.45;overflow-wrap:anywhere}
 .bub.me{align-self:flex-end;background:var(--accent);color:var(--on-accent);border-bottom-right-radius:4px}
 .bub.ai{align-self:flex-start;background:var(--accent-soft);color:var(--ink);border-bottom-left-radius:4px}
@@ -172,6 +172,8 @@ pre.box{margin:0;padding:12px;border-radius:12px;background:var(--bg);border:1px
 @media (min-width:900px){.calcell{min-height:72px}}
 .shiftrow input[type=time]::-webkit-calendar-picker-indicator{display:none}
 .shiftrow input[type=time]{text-align:center}
+
+.swrow{display:flex;gap:18px;flex-wrap:wrap}.swcol{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
 
 </style>
 <div id="app"></div>
@@ -837,7 +839,7 @@ function viewSettings() {
   var f = '<form class="card" data-f="settings"><h2>Your profile</h2>' +
     '<div class="field"><label for="sName">Name</label><input id="sName" type="text" required value="' + esc(p.name) + '"></div>' +
     '<div class="field"><label for="sEmail2">Email (for reminders later)</label><input id="sEmail2" type="email" value="' + esc(p.email || '') + '"></div>' +
-    '<div class="field"><span class="lbl">Choose your look</span><div class="chips" data-single>' + THEMES.map(swatchHtml(p.color)).join('') + '</div></div>' +
+    '<div class="field"><span class="lbl">Colour</span><div class="swrow" data-single>' + THEMES.map(function (t) { return '<span class="swcol">' + swatchHtml(p.color)(t) + t.n + '</span>'; }).join('') + '</div><span class="small muted">Changes show straight away. Press Save settings to keep them.</span></div>' +
     '<div class="field"><span class="lbl">Appearance</span><div class="seg" data-single>' + [['system', 'Match device'], ['light', 'Light'], ['dark', 'Dark']].map(function (m) { return segBtn(m[1], s.theme === m[0], 'theme', m[0]); }).join('') + '</div></div>' +
     '<div class="field"><span class="lbl">Daily message</span><div class="seg" data-single>' + [['motivation', 'Motivation'], ['bible', 'Bible verse'], ['none', 'None']].map(function (m) { return segBtn(m[1], s.message === m[0], 'msg', m[0]); }).join('') + '</div></div>' +
     '<h2 style="margin-top:8px">Work schedule</h2><span class="small muted">Tick the days you work and set the hours. Focus Flow never plans tasks inside a shift. Overnight shifts work too: set the end earlier than the start.</span>' +
@@ -1351,10 +1353,11 @@ var A = {
     if (par && par.hasAttribute('data-single')) {
       Array.prototype.forEach.call(par.querySelectorAll('[data-a="chip"]'), function (b) { b.setAttribute('aria-pressed', 'false'); });
       el.setAttribute('aria-pressed', 'true');
+      if (el.dataset.g === 'theme') { var rt = document.documentElement; if (el.dataset.val === 'system') rt.removeAttribute('data-theme'); else rt.setAttribute('data-theme', el.dataset.val); }
     } else el.setAttribute('aria-pressed', el.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
   },
   swatch: function (el) {
-    Array.prototype.forEach.call(el.parentElement.querySelectorAll('[data-a="swatch"]'), function (b) { b.setAttribute('aria-pressed', 'false'); });
+    Array.prototype.forEach.call((el.closest('[data-single]') || el.parentElement).querySelectorAll('[data-a="swatch"]'), function (b) { b.setAttribute('aria-pressed', 'false'); });
     el.setAttribute('aria-pressed', 'true');
     var k = themeOf(el.dataset.val).k; if (k === 'indigo') document.documentElement.removeAttribute('data-accent'); else document.documentElement.setAttribute('data-accent', k);
   },
@@ -2367,7 +2370,7 @@ async function sendCoach(text) {
   if (U.view === 'coach' || U.coachDid.length) render();
   if (U.view === 'coach') coachScroll();
 }
-function coachScroll() { var el = $('#coachEnd'); if (el && el.scrollIntoView) { try { el.scrollIntoView({ block: 'end' }); } catch (e) { } } }
+function coachScroll() { var el = $('#coachEnd'), box = el && el.parentElement; if (box) { try { box.scrollTop = box.scrollHeight; } catch (e) { } } }
 function viewCoach() {
   var d = D(), L = d.chat || [], on = aiOn();
   var bub = function (m) {
