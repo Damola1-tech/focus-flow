@@ -46,6 +46,14 @@ async def main():
             ok('s9c home nudges to turn on phone alerts', 'Turn on phone alerts' in await p1.inner_text('body'))
             await p1.evaluate("A.sbPushHide()"); await p1.wait_for_timeout(300)
             ok('s9d the nudge can be dismissed', 'Turn on phone alerts' not in await p1.inner_text('body'))
+            # the AI coach, through the server
+            ok('s9e coach is available when the server has a key', await p1.evaluate("AI.available === true"))
+            await p1.evaluate("U.flow=null; U.overlay=null; U.view='coach'; render()"); await p1.wait_for_timeout(300)
+            await p1.fill('#coachBox', 'What should I do next?'); await p1.click('form[data-f=coach] button[type=submit]'); await p1.wait_for_timeout(1500)
+            ok('s9f coach answers', 'Start with the most important task' in await p1.inner_text('body'), (await p1.inner_text('body'))[-300:])
+            await p1.wait_for_timeout(800); await p1.evaluate("sendCoach('Add a 20 minute walk at 5pm')"); await p1.wait_for_timeout(2500)
+            t = await p1.inner_text('body'); ok('s9g coach used a tool and the task exists', 'Done, I added it' in t and await p1.evaluate("tasks().some(function(x){return x.title==='Evening walk'})"), t[-300:])
+            r = await p1.evaluate("AI.fn.json('Reply with ONLY a JSON object: x')"); ok('s9h json helper parses the reply', r.get('say') == 'Kept it light.', r)
             # settings: account card, push state, test alert, sign out
             await p1.evaluate("U.flow=null; U.overlay=null; renderOverlay()"); await p1.wait_for_timeout(200)
             await p1.evaluate("U.view='settings'; render()"); await p1.wait_for_timeout(600)

@@ -45,6 +45,16 @@ http.createServer((req, res) => {
       if (!uid) return send(res, 401, { error: 'not signed in' }); state.fn.push(j);
       if (j.action === 'test') { state.tests++; return send(res, 200, { sent: 1 }); }
       if (j.action === 'invite') return send(res, 200, { results: j.emails.map((e) => ({ email: e, status: 'emailed' })) });
+      if (j.action === 'coachStatus') return send(res, 200, { enabled: !state.noAi, daily: 60 });
+      if (j.action === 'coach') {
+        state.coachCalls = (state.coachCalls || 0) + 1;
+        if (state.coachCalls > (state.coachMax || 99)) return send(res, 429, { error: 'daily_limit' });
+        const last = j.messages[j.messages.length - 1], tr = Array.isArray(last.content) && last.content[0] && last.content[0].type === 'tool_result';
+        if (tr) return send(res, 200, { content: [{ type: 'text', text: 'Done, I added it.' }], stop_reason: 'end_turn' });
+        if (/walk/.test(String(last.content))) return send(res, 200, { content: [{ type: 'text', text: 'Adding it.' }, { type: 'tool_use', id: 'tu1', name: 'add_task', input: { title: 'Evening walk', minutes: 20, time: '17:00' } }], stop_reason: 'tool_use' });
+        if (/JSON object/.test(String(j.messages[0].content))) return send(res, 200, { content: [{ type: 'text', text: 'Sure: {"say":"Kept it light.","changes":[],"add":[]}' }], stop_reason: 'end_turn' });
+        return send(res, 200, { content: [{ type: 'text', text: 'Start with the most important task.' }], stop_reason: 'end_turn' });
+      }
       if (j.action === 'deleteAccount') { state.deleted.push(uid); delete state.users[uid]; return send(res, 200, { ok: true }); }
       return send(res, 400, {});
     }

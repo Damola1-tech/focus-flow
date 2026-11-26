@@ -232,6 +232,51 @@ async function handleDelete(deps, uid) {
   return { ok: true };
 }
 
+// ---- AI coach. The Anthropic key lives only on the server; people get a daily allowance so the bill stays predictable.
+const ROLES = ['user', 'assistant'];
+const BLOCKS = ['text', 'tool_use', 'tool_result'];
+function cleanMessages(msgs) {
+  if (!Array.isArray(msgs) || !msgs.length || msgs.length > 14) return null;
+  let size = 0; const out = [];
+  for (const m of msgs) {
+    if (!m || !ROLES.includes(m.role)) return null;
+    let c = m.content;
+    if (typeof c === 'string') { c = c.slice(0, 12000); size += c.length; }
+    else if (Array.isArray(c) && c.length <= 12) {
+      c = c.map((b) => {
+        if (!b || !BLOCKS.includes(b.type)) return null;
+        if (b.type === 'text') return { type: 'text', text: String(b.text || '').slice(0, 12000) };
+        if (b.type === 'tool_use') return { type: 'tool_use', id: String(b.id || '').slice(0, 80), name: String(b.name || '').slice(0, 60), input: b.input && typeof b.input === 'object' ? b.input : {} };
+        return { type: 'tool_result', tool_use_id: String(b.tool_use_id || '').slice(0, 80), content: String(b.content || '').slice(0, 2000), ...(b.is_error ? { is_error: true } : {}) };
+      });
+      if (c.some((b) => !b)) return null;
+      size += JSON.stringify(c).length;
+    } else return null;
+    out.push({ role: m.role, content: c });
+  }
+  return size > 40000 ? null : out;
+}
+function cleanTools(tools) {
+  if (!Array.isArray(tools)) return [];
+  return tools.slice(0, 4).filter((t) => t && /^[a-z_]{1,40}$/.test(t.name)).map((t) => ({ name: t.name, description: String(t.description || '').slice(0, 400), input_schema: t.input_schema && t.input_schema.type === 'object' ? t.input_schema : { type: 'object', properties: {} } }));
+}
+async function handleCoachStatus(deps, uid, env = {}) {
+  return { enabled: !!(deps.ai && deps.ai.enabled), daily: +env.COACH_DAILY || 60 };
+}
+async function handleCoach(deps, uid, body, env = {}, now = Date.now()) {
+  const { store, ai } = deps;
+  if (!ai || !ai.enabled) return { status: 503, body: { error: 'ai_not_set_up' } };
+  const messages = cleanMessages(body && body.messages);
+  if (!messages || messages[0].role !== 'user') return { status: 400, body: { error: 'bad request' } };
+  const limit = +env.COACH_DAILY || 60;
+  const used = await store.aiUse(uid, new Date(now).toISOString().slice(0, 10));
+  if (used > limit) return { status: 429, body: { error: 'daily_limit', limit } };
+  try {
+    const r = await ai.complete({ messages, tools: cleanTools(body.tools), system: 'You are the helper inside Focus Flow, a personal planner. Follow the instructions in the first message. Keep replies short and kind.' });
+    return { status: 200, body: { content: r.content, stop_reason: r.stop_reason, left: Math.max(0, limit - used) } };
+  } catch (e) { console.error('ai failed', String(e)); return { status: 502, body: { error: 'ai_failed' } }; }
+}
+
 // Public values have built-in defaults; only the three real secrets (VAPID_PRIVATE_KEY, SMTP_USER, SMTP_PASS) need to be set.
 const DEFAULTS: Record<string, string> = {
   SMTP_HOST: "smtp.gmail.com", SMTP_PORT: "465",
@@ -245,6 +290,18 @@ const transport = env("SMTP_HOST") ? nodemailer.createTransport({ host: env("SMT
 
 const mail = { enabled: !!transport, send: ({ to, subject, text }) => transport.sendMail({ from: env("MAIL_FROM") || ("Focus Flow <" + env("SMTP_USER") + ">"), to, subject, text }) };
 const push = { send: (sub, payload) => webpush.sendNotification(sub, JSON.stringify(payload), { TTL: 900 }) };
+const ai = {
+  enabled: !!env("ANTHROPIC_API_KEY"),
+  complete: async ({ messages, tools, system }) => {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST", signal: AbortSignal.timeout(50000),
+      headers: { "content-type": "application/json", "x-api-key": env("ANTHROPIC_API_KEY"), "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({ model: env("COACH_MODEL") || "claude-sonnet-5-5", max_tokens: 700, system, messages, ...(tools.length ? { tools } : {}) }),
+    });
+    if (!res.ok) throw new Error("anthropic " + res.status + " " + (await res.text()).slice(0, 200));
+    return await res.json();
+  },
+};
 const ok = (r) => { if (r.error) throw new Error(r.error.message); return r.data; };
 const uidOf = (path: string) => path.split("/")[2];
 
@@ -281,9 +338,10 @@ const store = {
   async deleteUser(uid: string) { const r = await admin.auth.admin.deleteUser(uid); if (r.error) throw new Error(r.error.message); },
   async inviteCount(uid: string, since: string) { const r = await admin.from("invites").select("token", { count: "exact", head: true }).eq("inviter", uid).gt("created_at", since); return r.count || 0; },
   async createInvite(i: any) { ok(await admin.from("invites").insert({ token: i.token, email: i.email, plan_id: i.planId, inviter: i.inviter })); },
+  async aiUse(uid: string, day: string) { const r = await admin.rpc("bump_ai_usage", { u: uid, d: day }); if (r.error) throw new Error(r.error.message); return r.data; },
   async revokeInvite(token: string) { await admin.from("invites").update({ revoked: true }).eq("token", token); },
 };
-const deps = { store, mail, push };
+const deps = { store, mail, push, ai };
 const cors = { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret" };
 const json = (o: unknown, status = 200) => new Response(JSON.stringify(o), { status, headers: cors });
 
@@ -304,6 +362,8 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     if (body.action === "test" || body.test) return json(await handleTest(deps, uid));
     if (body.action === "invite") { const r = await handleInvite(deps, uid, body, { SITE_URL: env("SITE_URL") }); return json(r.body, r.status); }
+    if (body.action === "coachStatus") return json(await handleCoachStatus(deps, uid, { COACH_DAILY: env("COACH_DAILY") }));
+    if (body.action === "coach") { const r = await handleCoach(deps, uid, body, { COACH_DAILY: env("COACH_DAILY") }); return json(r.body, r.status); }
     if (body.action === "deleteAccount") return json(await handleDelete(deps, uid));
     return json({ error: "unknown action" }, 400);
   } catch (e) { console.error(String(e)); return json({ error: "server error" }, 500); }

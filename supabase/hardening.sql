@@ -200,3 +200,20 @@ revoke all on function public.take_backup() from public, anon, authenticated;
 --   select e->>'path', e->>'parent', e->'data' from public.backups, jsonb_array_elements(data) e
 --   where id = (select max(id) from public.backups) and e->>'path' = 'PATH-TO-RESTORE'
 --   on conflict (path) do update set data = excluded.data;
+
+-- ---------- AI coach: a per-person daily call counter (keeps the bill predictable) ----------
+create table if not exists public.ai_usage (
+  user_id uuid not null,
+  day date not null,
+  n integer not null default 0,
+  primary key (user_id, day)
+);
+alter table public.ai_usage enable row level security;
+grant all on public.ai_usage to service_role;
+create or replace function public.bump_ai_usage(u uuid, d date) returns integer
+language sql security definer set search_path = public as $$
+  insert into public.ai_usage (user_id, day, n) values (u, d, 1)
+  on conflict (user_id, day) do update set n = public.ai_usage.n + 1
+  returning n $$;
+revoke all on function public.bump_ai_usage(uuid, date) from public, anon, authenticated;
+grant execute on function public.bump_ai_usage(uuid, date) to service_role;

@@ -1,4 +1,4 @@
-import { runCron, handleInvite, handleDelete, handleTest } from '../supabase/functions/focusflow/handlers.js';
+import { runCron, handleInvite, handleDelete, handleTest, handleCoach, handleCoachStatus, cleanMessages } from '../supabase/functions/focusflow/handlers.js';
 let fails = 0; const ok = (n, c, x) => { console.log((c ? 'PASS ' : 'FAIL ') + n + (c ? '' : ' ' + JSON.stringify(x))); if (!c) fails++; };
 const NOW = Date.UTC(2026, 10, 25, 8, 51);   // 09:51 in Lagos
 function world() {
@@ -111,5 +111,27 @@ ok('t1 test alert reaches phone and email', x.sent === 2 && w.sentMail.length ==
   const w3 = world(); w3.put('data/users/u1/core', core({ morningAt: '' })); w3.subs.u1 = [{ endpoint: 'e1', sub: { endpoint: 'e1' } }];
   await runCron(w3.deps, AM);
   ok('k21 nothing is sent when the morning message is off', w3.sentPush.length === 0, w3.sentPush);
+}
+// ---- AI coach
+{
+  const w4 = world(); const calls = []; let used = 0;
+  w4.store.aiUse = async () => ++used;
+  w4.deps.ai = { enabled: true, complete: async (a) => { calls.push(a); return { content: [{ type: 'text', text: 'Hi' }], stop_reason: 'end_turn' }; } };
+  let r2 = await handleCoach(w4.deps, 'u1', { messages: [{ role: 'user', content: 'plan my day' }] }, { COACH_DAILY: 3 });
+  ok('c1 coach answers and passes the messages to the model', r2.status === 200 && r2.body.content[0].text === 'Hi' && calls.length === 1 && calls[0].messages.length === 1, r2);
+  ok('c2 junk is refused', (await handleCoach(w4.deps, 'u1', { messages: 'x' }, {})).status === 400 && (await handleCoach(w4.deps, 'u1', { messages: [{ role: 'system', content: 'x' }] }, {})).status === 400);
+  ok('c3 must start with the person', (await handleCoach(w4.deps, 'u1', { messages: [{ role: 'assistant', content: 'x' }] }, {})).status === 400);
+  ok('c4 oversized input is refused', cleanMessages([{ role: 'user', content: 'a'.repeat(12000) }, { role: 'assistant', content: 'a'.repeat(12000) }, { role: 'user', content: 'a'.repeat(12000) }, { role: 'assistant', content: 'a'.repeat(12000) }]) === null);
+  used = 2; r2 = await handleCoach(w4.deps, 'u1', { messages: [{ role: 'user', content: 'x' }] }, { COACH_DAILY: 3 });
+  ok('c5 third call of three is allowed', r2.status === 200 && r2.body.left === 0, r2);
+  r2 = await handleCoach(w4.deps, 'u1', { messages: [{ role: 'user', content: 'x' }] }, { COACH_DAILY: 3 });
+  ok('c6 over the daily allowance gets 429 and no model call', r2.status === 429 && calls.length === 2, r2);
+  w4.deps.ai = { enabled: false };
+  ok('c7 no key set on the server', (await handleCoach(w4.deps, 'u1', { messages: [{ role: 'user', content: 'x' }] }, {})).status === 503 && (await handleCoachStatus(w4.deps, 'u1', {})).enabled === false);
+  w4.deps.ai = { enabled: true, complete: async () => { throw new Error('boom'); } }; used = 0;
+  ok('c8 model failure is a clean 502', (await handleCoach(w4.deps, 'u1', { messages: [{ role: 'user', content: 'x' }] }, {})).status === 502);
+  const tm = cleanMessages([{ role: 'user', content: 'q' }, { role: 'assistant', content: [{ type: 'tool_use', id: 't1', name: 'add_task', input: { title: 'a' } }] }, { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: '{"ok":true}' }] }]);
+  ok('c9 tool-use turns are accepted', tm && tm.length === 3 && tm[1].content[0].type === 'tool_use', tm);
+  ok('c10 unknown block types are refused', cleanMessages([{ role: 'user', content: [{ type: 'image', source: {} }] }]) === null);
 }
 console.log('FAILS:', fails); process.exit(fails ? 1 : 0);

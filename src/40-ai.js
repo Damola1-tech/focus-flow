@@ -14,7 +14,7 @@ function aiErr(e) {
   var c = e && e.code;
   if (c === 'cancelled') return '';
   if (c === 'not_granted' || c === 'sampling_disabled' || c === 'not_declared' || c === 'capability_disabled' || c === 'capability_removed') { AI.available = false; return 'The AI helper is not available for your account on this page.'; }
-  if (c === 'rate_limited') return e.reason === 'usage_limit' ? 'You have reached your Claude usage limit for now. Try again later.' : 'That was too quick. Wait a moment and try again.';
+  if (c === 'rate_limited') return e.reason === 'usage_limit' ? 'You have used the AI helper\'s allowance for today. It resets tomorrow.' : 'That was too quick. Wait a moment and try again.';
   if (c === 'session_expired') return 'Please sign in to Claude again, then retry.';
   if (c === 'invalid_json') return 'The AI answered in a way I could not use. Try rephrasing.';
   return 'The AI helper could not answer just now. Please try again.';
@@ -95,13 +95,13 @@ function viewCoach() {
   var live = U.coachBusy ? '<div class="bub ai" id="coachLive" aria-live="polite">' + esc(U.coachLive || 'Thinking…') + '</div>' : '';
   var chips = [['Plan my day', 'Look at my tasks for today and suggest the order I should do them in. Do not change anything yet.'], ['What should I do next?', 'What should I do next?'], ['I feel overwhelmed', 'I feel overwhelmed. Help me lighten today.'], ['Review my week', 'Review my week so far: what is going well and what should I change?']];
   return '<div class="head"><div><h1>Coach</h1><small>A calm helper that knows your day</small></div>' + (L.length && !U.coachBusy ? '<button class="btn sm ghost" data-a="coachClear">Clear chat</button>' : '') + '</div>' +
-    (on ? '' : '<section class="card warn"><b>The AI helper is off</b><span class="small">' + (AI.available ? 'You turned it off in Settings.' : 'It needs this page to be opened from its Claude link.') + '</span></section>') +
+    (on ? '' : '<section class="card warn"><b>The AI helper is off</b><span class="small">' + (AI.available ? 'You turned it off in Settings.' : 'It is not switched on for this copy of Focus Flow yet.') + '</span></section>') +
     '<section class="card chat" aria-label="Conversation">' + (L.length || U.coachBusy ? L.map(bub).join('') + live : '<p class="muted">Ask anything about your day, or tap a suggestion. The coach can add or move tasks if you ask it to.</p>') + '<span id="coachEnd"></span></section>' +
     (U.coachErr ? '<section class="card warn" role="alert"><span>' + esc(U.coachErr) + '</span></section>' : '') +
     (on ? '<div class="chips">' + chips.map(function (c) { return '<button class="chip" ' + (U.coachBusy ? 'disabled ' : '') + 'data-a="coachAsk" data-q="' + esc(c[1]) + '">' + esc(c[0]) + '</button>'; }).join('') + '</div>' +
       '<form data-f="coach" class="card"><div class="field"><label for="coachBox">Message</label><textarea id="coachBox" rows="2" maxlength="1500" placeholder="e.g. Add a 20 minute walk at 5pm today"' + (U.coachBusy ? ' disabled' : '') + '></textarea></div>' +
       '<div class="row">' + micBtn('coachBox') + (U.coachBusy ? '<button type="button" class="btn" data-a="coachStop">Stop</button>' : '<button class="btn primary" type="submit">Send</button>') + '</div>' +
-      '<span class="small muted">When you send a message, your tasks for today and tomorrow, goals and mood check-in are sent to Claude on your own account so it can answer. Nothing is sent otherwise.</span></form>' : '');
+      '<span class="small muted">When you send a message, your tasks for today and tomorrow, goals and mood check-in are sent to Claude (made by Anthropic) so it can answer. Nothing is sent otherwise.</span></form>' : '');
 }
 Object.assign(A, {
   coachAsk: function (el) { U.view = 'coach'; if (U.overlay) { U.overlay = null; renderOverlay(); } render(); window.scrollTo(0, 0); sendCoach(el.dataset.q); },

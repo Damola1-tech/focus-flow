@@ -128,7 +128,15 @@ function sbInstall() {
     can: async function () { return true; }, isOwner: async function () { return false; }, canEdit: async function () { return true; },
     profiles: async function () { return {}; }, search: async function () { return []; }
   };
-  window.claude = { use: async function (n) { return n === 'user' ? user : n === 'db' ? db : null; } };
+  var sample = null, sampleTried = false;
+  window.claude = { use: async function (n) {
+    if (n === 'user') return user; if (n === 'db') return db;
+    if (n === 'sample') {
+      if (!sampleTried) { sampleTried = true; try { var st = await sbFn('coachStatus'); if (st && st.enabled) sample = sbSample(); } catch (e) { } }
+      return sample;
+    }
+    return null;
+  } };
   SB.on = true;
 }
 
@@ -321,3 +329,47 @@ function sbPushBanner() {
   return '';
 }
 A.sbPushHide = function () { try { localStorage.setItem('ff.pushBanner.' + (CL.uid || ''), '1'); } catch (e) { } rerender(); };
+
+
+/* ---- the AI helper outside Claude: the server holds the key and talks to Claude; this makes it look like the "sample" ability the Coach already uses ---- */
+function sbAiErr(e) {
+  if (e && e.status === 429) return { code: 'rate_limited', reason: 'usage_limit' };
+  if (e && e.status === 503) return { code: 'not_granted' };
+  if (e && e.status === 401) return { code: 'session_expired' };
+  return { code: 'failed', message: e && e.message };
+}
+function sbSample() {
+  var fn = async function (input, opts) {
+    opts = opts || {};
+    var msgs = typeof input === 'string' ? [{ role: 'user', content: input }] : input.map(function (m) { return { role: m.role, content: m.content }; });
+    var tools = (opts.tools || []).map(function (t) { return { name: t.name, description: t.description || '', input_schema: t.inputSchema || { type: 'object', properties: {} } }; });
+    var text = '', trunc = false;
+    for (var i = 0; i < 5; i++) {
+      if (opts.signal && opts.signal.aborted) throw { code: 'cancelled', text: text };
+      var r; try { r = await sbFn('coach', { messages: msgs, tools: tools }); } catch (e) { var x = sbAiErr(e); x.text = text; throw x; }
+      var blocks = (r && r.content) || [], t = blocks.filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join('');
+      var uses = blocks.filter(function (b) { return b.type === 'tool_use'; });
+      text += t; trunc = r && r.stop_reason === 'max_tokens';
+      if (r && r.stop_reason === 'tool_use' && uses.length && tools.length) {
+        msgs.push({ role: 'assistant', content: blocks });
+        var res = [];
+        for (var k = 0; k < uses.length; k++) {
+          var u = uses[k], tool = (opts.tools || []).filter(function (q) { return q.name === u.name; })[0];
+          try { if (!tool) throw new Error('unknown tool'); res.push({ type: 'tool_result', tool_use_id: u.id, content: JSON.stringify(await tool.execute(u.input || {})) }); }
+          catch (er) { res.push({ type: 'tool_result', tool_use_id: u.id, content: String((er && er.message) || er), is_error: true }); }
+        }
+        msgs.push({ role: 'user', content: res }); if (t) text += '\n'; continue;
+      }
+      break;
+    }
+    text = text.trim(); if (opts.onText) opts.onText({ text: text, delta: text });
+    return { text: text, truncated: !!trunc };
+  };
+  fn.json = async function (prompt, opts) {
+    var r = await fn(prompt, opts), a = r.text.indexOf('{'), b = r.text.lastIndexOf('}');
+    if (a < 0 || b <= a) throw { code: 'invalid_json' };
+    try { return JSON.parse(r.text.slice(a, b + 1)); } catch (e) { throw { code: 'invalid_json' }; }
+  };
+  fn.limits = async function () { return { tools: true, images: false }; };
+  return fn;
+}

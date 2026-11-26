@@ -111,3 +111,48 @@ export async function handleDelete(deps, uid) {
   await store.deleteUser(uid);
   return { ok: true };
 }
+
+// ---- AI coach. The Anthropic key lives only on the server; people get a daily allowance so the bill stays predictable.
+const ROLES = ['user', 'assistant'];
+const BLOCKS = ['text', 'tool_use', 'tool_result'];
+export function cleanMessages(msgs) {
+  if (!Array.isArray(msgs) || !msgs.length || msgs.length > 14) return null;
+  let size = 0; const out = [];
+  for (const m of msgs) {
+    if (!m || !ROLES.includes(m.role)) return null;
+    let c = m.content;
+    if (typeof c === 'string') { c = c.slice(0, 12000); size += c.length; }
+    else if (Array.isArray(c) && c.length <= 12) {
+      c = c.map((b) => {
+        if (!b || !BLOCKS.includes(b.type)) return null;
+        if (b.type === 'text') return { type: 'text', text: String(b.text || '').slice(0, 12000) };
+        if (b.type === 'tool_use') return { type: 'tool_use', id: String(b.id || '').slice(0, 80), name: String(b.name || '').slice(0, 60), input: b.input && typeof b.input === 'object' ? b.input : {} };
+        return { type: 'tool_result', tool_use_id: String(b.tool_use_id || '').slice(0, 80), content: String(b.content || '').slice(0, 2000), ...(b.is_error ? { is_error: true } : {}) };
+      });
+      if (c.some((b) => !b)) return null;
+      size += JSON.stringify(c).length;
+    } else return null;
+    out.push({ role: m.role, content: c });
+  }
+  return size > 40000 ? null : out;
+}
+export function cleanTools(tools) {
+  if (!Array.isArray(tools)) return [];
+  return tools.slice(0, 4).filter((t) => t && /^[a-z_]{1,40}$/.test(t.name)).map((t) => ({ name: t.name, description: String(t.description || '').slice(0, 400), input_schema: t.input_schema && t.input_schema.type === 'object' ? t.input_schema : { type: 'object', properties: {} } }));
+}
+export async function handleCoachStatus(deps, uid, env = {}) {
+  return { enabled: !!(deps.ai && deps.ai.enabled), daily: +env.COACH_DAILY || 60 };
+}
+export async function handleCoach(deps, uid, body, env = {}, now = Date.now()) {
+  const { store, ai } = deps;
+  if (!ai || !ai.enabled) return { status: 503, body: { error: 'ai_not_set_up' } };
+  const messages = cleanMessages(body && body.messages);
+  if (!messages || messages[0].role !== 'user') return { status: 400, body: { error: 'bad request' } };
+  const limit = +env.COACH_DAILY || 60;
+  const used = await store.aiUse(uid, new Date(now).toISOString().slice(0, 10));
+  if (used > limit) return { status: 429, body: { error: 'daily_limit', limit } };
+  try {
+    const r = await ai.complete({ messages, tools: cleanTools(body.tools), system: 'You are the helper inside Focus Flow, a personal planner. Follow the instructions in the first message. Keep replies short and kind.' });
+    return { status: 200, body: { content: r.content, stop_reason: r.stop_reason, left: Math.max(0, limit - used) } };
+  } catch (e) { console.error('ai failed', String(e)); return { status: 502, body: { error: 'ai_failed' } }; }
+}

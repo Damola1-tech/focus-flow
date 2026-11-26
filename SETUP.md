@@ -109,6 +109,13 @@ Three ways, from simplest:
 - **Scheduled reminders never arrive but the test does**: step 8 (check that you replaced both placeholders). Look at Edge Functions, `reminders`, Logs.
 - **Nothing on iPhone**: it must be added to the Home Screen and opened from the icon.
 
+## Turning on the AI Coach (optional, costs a little)
+
+1. Create an account at https://console.anthropic.com, add a few dollars of credit, and under **Limits** set a small monthly spend limit (for example $5) so the bill can never surprise you.
+2. **API Keys**, create a key called Focus Flow, copy it.
+3. Supabase, Edge Functions, **Secrets**, add `ANTHROPIC_API_KEY` with that key. Never paste it into the app, GitHub or a chat.
+4. Reload Focus Flow: a **Coach** entry appears. Optional secrets: `COACH_MODEL` (default `claude-sonnet-5-5`) and `COACH_DAILY` (calls per person per day, default 60).
+
 ## Looking after it
 
 - **Crash reports:** Supabase, Table Editor, `client_errors` (newest first) shows errors from people's phones.
@@ -124,4 +131,4 @@ Three ways, from simplest:
 - The app polls for changes every few seconds while it is open, so shared plans update within about 6 seconds.
 - Phone alerts are not shown a second time while the app is open on screen (the app shows its own). Emails are sent either way.
 - Reminders sent by the server: task starting soon, task not started, return-from-pause reminders, a morning message (default 8:00), an evening review (default 20:00), a weekly summary (Sunday 19:00) and a monthly report (1st, 09:00). Each person can change or switch these off in Settings. They respect quiet hours and the person's time zone. Hourly check-ins still only appear inside the open app.
-- The AI Coach only works when Focus Flow is opened through its Claude link; adding it here needs an Anthropic API key and another server function.
+- The AI Coach (and "Ask AI to change") works through the same server function. It stays hidden until you add the `ANTHROPIC_API_KEY` secret (see below). Each person gets 60 AI calls a day (`COACH_DAILY` secret changes it).

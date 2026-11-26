@@ -3,7 +3,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
 import nodemailer from "npm:nodemailer@6.9.14";
-import { runCron, handleTest, handleInvite, handleDelete } from "./handlers.js";
+import { runCron, handleTest, handleInvite, handleDelete, handleCoach, handleCoachStatus } from "./handlers.js";
 
 // Public values have built-in defaults; only the three real secrets (VAPID_PRIVATE_KEY, SMTP_USER, SMTP_PASS) need to be set.
 const DEFAULTS: Record<string, string> = {
@@ -18,6 +18,18 @@ const transport = env("SMTP_HOST") ? nodemailer.createTransport({ host: env("SMT
 
 const mail = { enabled: !!transport, send: ({ to, subject, text }) => transport.sendMail({ from: env("MAIL_FROM") || ("Focus Flow <" + env("SMTP_USER") + ">"), to, subject, text }) };
 const push = { send: (sub, payload) => webpush.sendNotification(sub, JSON.stringify(payload), { TTL: 900 }) };
+const ai = {
+  enabled: !!env("ANTHROPIC_API_KEY"),
+  complete: async ({ messages, tools, system }) => {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST", signal: AbortSignal.timeout(50000),
+      headers: { "content-type": "application/json", "x-api-key": env("ANTHROPIC_API_KEY"), "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({ model: env("COACH_MODEL") || "claude-sonnet-5-5", max_tokens: 700, system, messages, ...(tools.length ? { tools } : {}) }),
+    });
+    if (!res.ok) throw new Error("anthropic " + res.status + " " + (await res.text()).slice(0, 200));
+    return await res.json();
+  },
+};
 const ok = (r) => { if (r.error) throw new Error(r.error.message); return r.data; };
 const uidOf = (path: string) => path.split("/")[2];
 
@@ -54,9 +66,10 @@ const store = {
   async deleteUser(uid: string) { const r = await admin.auth.admin.deleteUser(uid); if (r.error) throw new Error(r.error.message); },
   async inviteCount(uid: string, since: string) { const r = await admin.from("invites").select("token", { count: "exact", head: true }).eq("inviter", uid).gt("created_at", since); return r.count || 0; },
   async createInvite(i: any) { ok(await admin.from("invites").insert({ token: i.token, email: i.email, plan_id: i.planId, inviter: i.inviter })); },
+  async aiUse(uid: string, day: string) { const r = await admin.rpc("bump_ai_usage", { u: uid, d: day }); if (r.error) throw new Error(r.error.message); return r.data; },
   async revokeInvite(token: string) { await admin.from("invites").update({ revoked: true }).eq("token", token); },
 };
-const deps = { store, mail, push };
+const deps = { store, mail, push, ai };
 const cors = { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret" };
 const json = (o: unknown, status = 200) => new Response(JSON.stringify(o), { status, headers: cors });
 
@@ -77,6 +90,8 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     if (body.action === "test" || body.test) return json(await handleTest(deps, uid));
     if (body.action === "invite") { const r = await handleInvite(deps, uid, body, { SITE_URL: env("SITE_URL") }); return json(r.body, r.status); }
+    if (body.action === "coachStatus") return json(await handleCoachStatus(deps, uid, { COACH_DAILY: env("COACH_DAILY") }));
+    if (body.action === "coach") { const r = await handleCoach(deps, uid, body, { COACH_DAILY: env("COACH_DAILY") }); return json(r.body, r.status); }
     if (body.action === "deleteAccount") return json(await handleDelete(deps, uid));
     return json({ error: "unknown action" }, 400);
   } catch (e) { console.error(String(e)); return json({ error: "server error" }, 500); }
