@@ -188,6 +188,8 @@ function sharedDocs(list) {
   return out;
 }
 async function flushShared() {
+  /* Never write shared plans from the copy saved on this phone until the live copy has been loaded: an old copy would bring back people who have since declined or left. */
+  if (!CL.sharedReady || !CLX.sharedBuilt) return;
   var cur = sharedDocs(S.shared), path;
   for (path in cur) {
     var str = JSON.stringify(cur[path]);
@@ -212,7 +214,7 @@ function rebuildShared() {
     list.push({ id: id, title: p.title, kind: p.kind, deadline: p.deadline || '', ownerId: p.ownerId, createdAt: p.createdAt || 0, members: ms.sort(function (a, b) { return a.at - b.at; }), tasks: ts });
   });
   list.sort(function (a, b) { return b.createdAt - a.createdAt; });
-  S.shared = list; CLX.lastShared = sharedDocs(list);
+  S.shared = list; CLX.lastShared = sharedDocs(list); CLX.sharedBuilt = true;
   try { localStorage.setItem(LS_KEY, JSON.stringify(S)); } catch (e) { }
   reconcileShared(); inviteAlerts();
   rerender();

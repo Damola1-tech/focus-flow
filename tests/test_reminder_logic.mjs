@@ -21,7 +21,8 @@ const k1 = dueReminders({ core: core(), tasks: [task()], nowMs: at(8, 51) })[0].
 ok('l12 same task gives the same key all window (so it is sent once)', k1 === k2, [k1, k2]);
 r = dueReminders({ core: { ...core(), reminders: [{ id: 'r1', at: at(8, 0), text: 'Ready to get back to Reading?', fired: false }] }, tasks: [], nowMs: at(8, 2) });
 ok('l13 saved return reminder is sent', r.length === 1 && r[0].body.includes('get back'), r);
-ok('l14 already fired reminder is not', dueReminders({ core: { ...core(), reminders: [{ id: 'r1', at: at(8, 0), text: 'x', fired: true }] }, tasks: [], nowMs: at(8, 2) }).length === 0);
+ok('l14 a reminder the app already showed is still sent to the phone (recent)', dueReminders({ core: { ...core(), reminders: [{ id: 'r1', at: at(8, 0), text: 'x', fired: true }] }, tasks: [], nowMs: at(8, 2) }).length === 1);
+ok('l14b but not an old shown one', dueReminders({ core: { ...core(), reminders: [{ id: 'r1', at: at(8, 0), text: 'x', fired: true }] }, tasks: [], nowMs: at(8, 30) }).length === 0);
 ok('l15 12-hour format', fmt12('00:05') === '12:05 AM' && fmt12('13:30') === '1:30 PM' && fmt12('12:00') === '12:00 PM');
 ok('l16 bad time zone does not crash', Array.isArray(dueReminders({ core: core({ tz: 'Nope/Zone' }), tasks: [task()], nowMs: at(8, 51) })));
 

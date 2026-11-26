@@ -46,7 +46,10 @@ function dueReminders({ core, tasks, nowMs }) {
     });
   }
   ((core && core.reminders) || []).forEach((r) => {
-    if (r && !r.fired && r.at <= nowMs && nowMs - r.at < 6 * 3600 * 1000) out.push({ key: `r:${r.id}`, title: 'Focus Flow', body: r.text });
+    // The app marks a reminder as "fired" the moment it shows its own on-screen alert, which used to stop the server
+    // from ever sending the phone alert. So: unsent ones are caught up for 6 hours, shown ones for the last 10 minutes
+    // (the server remembers what it already sent, and the phone stays quiet while the app is open on screen).
+    if (r && r.at <= nowMs && nowMs - r.at < (r.fired ? 10 * 60 * 1000 : 6 * 3600 * 1000)) out.push({ key: `r:${r.id}`, title: 'Focus Flow', body: r.text });
   });
   return out;
 }

@@ -42,6 +42,10 @@ async def main():
             await p1.evaluate("(async()=>{const db=await claude.use('db'); await db.doc('plans/zz1').set({id:'zz1',title:'Family trip',owner:'u1'})})()")
             await p2.wait_for_timeout(8000)
             ok('s9b plan from phone 1 shows up on phone 2', bool(await p2.evaluate("!!(CLX.raw.plans && CLX.raw.plans.zz1)")))
+            await p1.evaluate("U.flow=null; U.overlay=null; U.view='home'; SB.pushState='off'; SB.pushAsked=true; render()"); await p1.wait_for_timeout(300)
+            ok('s9c home nudges to turn on phone alerts', 'Turn on phone alerts' in await p1.inner_text('body'))
+            await p1.evaluate("A.sbPushHide()"); await p1.wait_for_timeout(300)
+            ok('s9d the nudge can be dismissed', 'Turn on phone alerts' not in await p1.inner_text('body'))
             # settings: account card, push state, test alert, sign out
             await p1.evaluate("U.flow=null; U.overlay=null; renderOverlay()"); await p1.wait_for_timeout(200)
             await p1.evaluate("U.view='settings'; render()"); await p1.wait_for_timeout(600)

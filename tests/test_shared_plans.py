@@ -32,6 +32,41 @@ async def main():
         await p1.wait_for_timeout(1200)
         await p1.click('main [data-a=spOpen]'); await p1.wait_for_timeout(500)
         t = await p1.inner_text('main'); ok('s7 owner sees progress', '1 of' in t or '%' in t, t[:300])
+        # --- leaving after joining: the owner must stop seeing that person
+        await p2.click('main [data-a=spBack]') if await p2.locator('main [data-a=spBack]').count() else None
+        await nav(p2, 'shared'); await p2.click('main [data-a=spOpen]'); await p2.wait_for_timeout(400)
+        await p2.click('main [data-a=spLeave]'); await p2.wait_for_timeout(300)
+        await p2.click('[data-a=spLeaveYes]'); await p2.wait_for_timeout(2500)
+        mem = [v for k, v in w.db.items() if k.startswith('plan_members/')]
+        ok('s8 leaving removes the member row', not any(m['uid'] == 'u2' for m in mem), mem)
+        await p1.wait_for_timeout(1500); await nav(p1, 'shared'); await p1.click('main [data-a=spOpen]'); await p1.wait_for_timeout(400)
+        t = await p1.inner_text('main'); ok('s9 owner no longer lists the person', 'Nobody else is in this plan yet' in t, t[:400])
+        # --- declining an invitation
+        await p1.click('main [data-a=spEditPlan]'); await p1.wait_for_timeout(400)
+        await p1.click('.sheet .chip:has-text("Aunty Bisi")'); await p1.wait_for_timeout(200)
+        await p1.click('.sheet button[type=submit]'); await p1.wait_for_timeout(2500)
+        mem = [v for k, v in w.db.items() if k.startswith('plan_members/')]
+        ok('s10 re-invited', any(m['uid'] == 'u2' and m['status'] == 'invited' for m in mem), mem)
+        await p2.wait_for_timeout(1500); await nav(p2, 'shared')
+        await p2.click('main [data-a=spDecline]'); await p2.wait_for_timeout(2500)
+        mem = [v for k, v in w.db.items() if k.startswith('plan_members/')]
+        ok('s11 declining removes the invitation row', not any(m['uid'] == 'u2' for m in mem), mem)
+        await p1.wait_for_timeout(1500)
+        t = await p1.inner_text('main'); ok('s12 owner no longer sees them as invited', 'Invited' not in t, t[:300])
+        # --- a host whose phone still holds an OLD copy must not bring a declined person back
+        await p1.click('main [data-a=spEditPlan]'); await p1.wait_for_timeout(400)
+        await p1.click('.sheet .chip:has-text("Aunty Bisi")'); await p1.wait_for_timeout(200)
+        await p1.click('.sheet button[type=submit]'); await p1.wait_for_timeout(2500)
+        stale = await p1.evaluate("localStorage.getItem('focusflow.cloud.u1')")
+        ok('s13 have a stale copy that lists the invite', stale and '"invited"' in stale, (stale or '')[:100])
+        await p2.wait_for_timeout(1500); await nav(p2, 'shared')
+        await p2.click('main [data-a=spDecline]'); await p2.wait_for_timeout(2500)
+        ok('s14 declined in the database', not any(k.startswith('plan_members/') and v['uid'] == 'u2' for k, v in w.db.items()))
+        stale2 = json.loads(stale); stale2['pendingSync'] = True
+        await p1.evaluate("v => localStorage.setItem('focusflow.cloud.u1', v)", json.dumps(stale2))
+        n0 = len(w.log); await p1.reload(); await p1.wait_for_timeout(4000)
+        print('WRITES AFTER RELOAD', [x for x in w.log[n0:] if 'plan' in x[1]])
+        ok('s15 old copy on the host does not resurrect the declined person', not any(k.startswith('plan_members/') and v['uid'] == 'u2' for k, v in w.db.items()), [v for k, v in w.db.items() if k.startswith('plan_members/')])
         print(p1.errs, p2.errs)
         await b.close()
     print('\n'.join(R))

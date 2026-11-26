@@ -21,7 +21,7 @@ MOCK = r"""
 })();
 """
 class World:
-    def __init__(self): self.db = {}; self.pages = []
+    def __init__(self): self.db = {}; self.pages = []; self.log = []
     def segs(self, p): return p.split('/')
     async def exec(self, raw):
         r = json.loads(raw); op, path, data = r['op'], r['path'], r.get('data')
@@ -30,6 +30,7 @@ class World:
             n = len(self.segs(path)) + 1; pre = path + '/'
             rows = [{'id': k.split('/')[-1], 'data': v} for k, v in sorted(self.db.items()) if k.startswith(pre) and len(self.segs(k)) == n]
             return json.dumps(rows)
+        self.log.append((op, path))
         if op in ('set', 'update'):
             self.db[path] = data if op == 'set' else {**self.db.get(path, {}), **data}
         if op == 'delete': self.db.pop(path, None)

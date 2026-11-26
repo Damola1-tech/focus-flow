@@ -217,7 +217,7 @@ async function sbPushRefresh() {
   else if (!SB.cfg.vapidPublicKey) st = 'noserver';
   else if (Notification.permission === 'denied') st = 'denied';
   else { try { var reg = await navigator.serviceWorker.getRegistration(); var sub = reg && await reg.pushManager.getSubscription(); st = sub ? 'on' : 'off'; } catch (e) { st = 'off'; } }
-  if (st !== SB.pushState) { SB.pushState = st; if (U.view === 'settings' && !U.overlay) rerender(); }
+  if (st !== SB.pushState) { SB.pushState = st; if ((U.view === 'settings' || U.view === 'home') && !U.overlay && SB.ready()) rerender(); }
 }
 A.sbPushOn = async function () {
   try {
@@ -303,3 +303,21 @@ async function sbLogError(msg, stack) {
 }
 window.addEventListener('error', function (e) { sbLogError(e.message, e.error && e.error.stack); });
 window.addEventListener('unhandledrejection', function (e) { var r = e.reason; sbLogError(r && r.message ? r.message : String(r), r && r.stack); });
+
+
+/* ---- a nudge on the home screen until phone alerts are on (alerts that arrive when the app is closed need this, per phone) ---- */
+SB.ready = function () { return CL.phase === 'ready' && S.profiles.length > 0 && !U.wiz && !U.picker; };
+function sbPushBanner() {
+  if (!SB.on) return '';
+  var gone = false; try { gone = localStorage.getItem('ff.pushBanner.' + (CL.uid || '')) === '1'; } catch (e) { }
+  if (gone) return '';
+  if (SB.pushState == null) { if (!SB.pushAsked) { SB.pushAsked = true; sbPushRefresh().then(function () { if ((SB.pushState === 'off' || SB.pushState === 'unsupported') && SB.ready()) rerender(); }); } return ''; }
+  if (SB.pushState === 'off')
+    return '<div class="card warn" role="status"><b>Reminders will not reach you when Focus Flow is closed</b><span class="small">Turn on phone alerts on this phone. Do this once on every phone you use.</span><div class="acts"><button class="btn primary sm" data-a="sbPushOn">Turn on phone alerts</button><button class="btn sm ghost" data-a="sbPushHide">Not now</button></div></div>';
+  if (SB.pushState === 'unsupported' && /iPhone|iPad|iPod/.test(navigator.userAgent))
+    return '<div class="card warn" role="status"><b>Phone alerts need one extra step on iPhone</b><span class="small">Tap Share, then Add to Home Screen, then open Focus Flow from the new icon and turn on phone alerts in Settings. Needs iOS 16.4 or newer.</span><div class="acts"><button class="btn sm ghost" data-a="sbPushHide">Got it</button></div></div>';
+  if (SB.pushState === 'denied')
+    return '<div class="card warn" role="status"><b>Notifications are blocked for Focus Flow</b><span class="small">Allow notifications for this site in your browser or phone settings, then reload.</span><div class="acts"><button class="btn sm ghost" data-a="sbPushHide">Got it</button></div></div>';
+  return '';
+}
+A.sbPushHide = function () { try { localStorage.setItem('ff.pushBanner.' + (CL.uid || ''), '1'); } catch (e) { } rerender(); };

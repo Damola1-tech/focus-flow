@@ -473,7 +473,7 @@ function banners() {
   if (inPlanWindow() && !tomorrowPlanned()) out += '<div class="card soft"><b>Time to plan tomorrow</b><span class="small">Type or speak what you need to do. It takes a minute.</span><div class="acts"><button class="btn primary" data-a="evening">Plan tomorrow</button></div></div>';
   var todays = tasks().filter(function (t) { return t.date === date && t.status === 'todo'; });
   if (todays.length && !d.plans[date]) out += '<div class="card soft"><b>Turn today\'s tasks into a realistic plan</b><span class="small">Focus Flow fits them around your shift and energy. You review before anything changes.</span><div class="acts"><button class="btn primary" data-a="plan" data-date="' + date + '">Plan my day</button></div></div>';
-  return out + cloudBanners() + travelBanners() + alertBanner() + sharedBanners();
+  return out + (typeof sbPushBanner === 'function' ? sbPushBanner() : '') + cloudBanners() + travelBanners() + alertBanner() + sharedBanners();
 }
 function checkinCard() {
   if (todayCheckin()) {
