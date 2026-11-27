@@ -37,7 +37,7 @@ function coachRules() {
   var d = D(), p = P(), low = (d.checkins[todayStr()] || {}).energy === 'low';
   return 'You are the coach inside Focus Flow, a personal planner used by ' + p.name + '. Speak in short, plain, kind sentences, usually under 120 words, and give one clear next step. ' +
     'Use only the facts in STATE below. If something is not there, say you do not know it. Never invent tasks, numbers, dates or progress. No medical, legal or financial advice. ' +
-    'You may add or move tasks with your tools, but only when the person asks or clearly agrees, and then say plainly what you changed. Never delete anything. ' +
+    'To work out a time, start from "now" in STATE (24-hour clock) and use HH:MM. Never repeat an earlier reply word for word. Call add_task once per task. You may add or move tasks with your tools, but only when the person asks or clearly agrees, and then say plainly what you changed. Never delete anything. ' +
     (d.settings.message === 'bible' ? 'The person likes Bible encouragement: a short fitting verse (KJV) is welcome when it truly helps, not in every reply. ' : '') +
     (low ? 'Their energy is low today, so keep suggestions small and gentle. ' : '') +
     '\n\nSTATE (read only):\n' + JSON.stringify(aiState());
@@ -52,7 +52,10 @@ function coachTools() {
       execute: function (i) {
         var title = String(i.title || '').trim().slice(0, 140); if (!title) throw new Error('title is required');
         var date = validDate(i.date) ? i.date : todayStr(), est = Math.min(480, Math.max(5, Math.round(+i.minutes || 30)));
-        var t = addTask({ title: title, est: est, date: date, time: validTime(i.time) ? i.time : '' });
+        var tm = validTime(i.time) ? i.time : '';
+        var dup = tasks().filter(function (x) { return x.status !== 'cancelled' && x.date === date && (x.time || '') === tm && String(x.title).trim().toLowerCase() === title.toLowerCase(); })[0];
+        if (dup) { U.coachDid = (U.coachDid || []).concat(['Already in your list: ' + dup.title]); return { ok: true, id: dup.id, date: date, note: 'already existed, nothing added' }; }
+        var t = addTask({ title: title, est: est, date: date, time: tm });
         U.coachDid = (U.coachDid || []).concat(['Added: ' + title]); return { ok: true, id: t.id, date: date };
       }
     },
@@ -69,17 +72,18 @@ function coachTools() {
 }
 async function sendCoach(text) {
   text = String(text || '').trim(); if (!text || U.coachBusy || !aiOn()) return;
-  var d = D(); d.chat.push({ role: 'user', content: text.slice(0, 1500) }); U.coachBusy = true; U.coachErr = ''; U.coachLive = ''; U.coachDid = []; save();
+  var d = D(); d.chat.push({ role: 'user', content: text.slice(0, 1500), day: todayStr() }); U.coachBusy = true; U.coachErr = ''; U.coachLive = ''; U.coachDid = []; save();
   if (U.view === 'coach') { render(); coachScroll(); }
   var ctl = new AbortController(); AI.ctl = ctl;
-  var input = [{ role: 'user', content: coachRules() }].concat(d.chat.slice(-10).map(function (m) { return { role: m.role, content: m.content }; }));
+  var input = [{ role: 'user', content: coachRules() }].concat(d.chat.filter(function (m) { return !m.day || m.day === todayStr(); }).slice(-8).map(function (m) { return { role: m.role, content: m.content }; }));
   var opts = { cache: false, signal: ctl.signal, onText: function (u) { U.coachLive = u.text; var el = $('#coachLive'); if (el) { el.textContent = u.text; coachScroll(); } } };
   if (AI.limits && AI.limits.tools) opts.tools = coachTools();
   try {
     var r = await AI.fn(input, opts);
-    d.chat.push({ role: 'assistant', content: r.text + (U.coachDid.length ? '\n\n' + U.coachDid.map(function (x) { return '• ' + x; }).join('\n') : '') });
+    d.chat.push({ role: 'assistant', day: todayStr(), content: (r.text || (U.coachDid.length ? 'Done.' : '')) + (U.coachDid.length ? '\n\n' + U.coachDid.map(function (x) { return '• ' + x; }).join('\n') : '') });
   } catch (e) {
-    if (e && e.text) d.chat.push({ role: 'assistant', content: e.text + ' (cut short)' });
+    if (U.coachDid.length) d.chat.push({ role: 'assistant', day: todayStr(), content: (e && e.text ? e.text + '\n\n' : '') + 'I made these changes, but could not finish my reply:\n' + U.coachDid.map(function (x) { return '• ' + x; }).join('\n') });
+    else if (e && e.text) d.chat.push({ role: 'assistant', day: todayStr(), content: e.text + ' (cut short)' });
     U.coachErr = aiErr(e);
   }
   U.coachBusy = false; U.coachLive = ''; AI.ctl = null; save();

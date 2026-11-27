@@ -347,7 +347,7 @@ function sbSample() {
     var text = '', trunc = false;
     for (var i = 0; i < 5; i++) {
       if (opts.signal && opts.signal.aborted) throw { code: 'cancelled', text: text };
-      var r; try { r = await sbFn('coach', { messages: msgs, tools: tools }); } catch (e) { var x = sbAiErr(e); x.text = text; throw x; }
+      var r; try { r = await sbFn('coach', { messages: msgs, tools: tools }); } catch (e) { if (i > 0) { r = { content: [], stop_reason: 'end_turn' }; } else { var x = sbAiErr(e); x.text = text; throw x; } }
       var blocks = (r && r.content) || [], t = blocks.filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join('');
       var uses = blocks.filter(function (b) { return b.type === 'tool_use'; });
       text += t; trunc = r && r.stop_reason === 'max_tokens';

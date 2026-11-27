@@ -19,6 +19,7 @@ http.createServer((req, res) => {
     const tok = (req.headers.authorization || '').replace('Bearer ', ''), uid = tok.startsWith('tok.') ? tok.slice(4) : null;
     const p = url.pathname;
     if ((req.headers.authorization || '').startsWith('Bearer sb_')) return send(res, 401, { message: 'Invalid JWT' });
+    if (p === '/__flag') { for (const [k, v] of url.searchParams) state[k] = v === '1'; return send(res, 200, {}); }
     if (p === '/__db') return send(res, 200, { docs: state.docs, subs: state.subs, users: state.users, tests: state.tests, fn: state.fn, deleted: state.deleted });
     if (p === '/auth/v1/signup') {
       const code = ((j.data && j.data.family_code) || '').trim().toLowerCase();
@@ -50,6 +51,7 @@ http.createServer((req, res) => {
         state.coachCalls = (state.coachCalls || 0) + 1;
         if (state.coachCalls > (state.coachMax || 99)) return send(res, 429, { error: 'daily_limit' });
         const last = j.messages[j.messages.length - 1], tr = Array.isArray(last.content) && last.content[0] && last.content[0].type === 'tool_result';
+        if (tr && state.failAfterTool) return send(res, 502, { error: 'ai_failed' });
         if (tr) return send(res, 200, { content: [{ type: 'text', text: 'Done, I added it.' }], stop_reason: 'end_turn' });
         if (/walk/.test(String(last.content))) return send(res, 200, { content: [{ type: 'text', text: 'Adding it.' }, { type: 'tool_use', id: 'tu1', name: 'add_task', input: { title: 'Evening walk', minutes: 20, time: '17:00' } }], stop_reason: 'tool_use' });
         if (/JSON object/.test(String(j.messages[0].content))) return send(res, 200, { content: [{ type: 'text', text: 'Sure: {"say":"Kept it light.","changes":[],"add":[]}' }], stop_reason: 'end_turn' });
