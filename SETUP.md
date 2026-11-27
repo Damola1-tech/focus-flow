@@ -138,3 +138,7 @@ Things to know:
 - Phone alerts are not shown a second time while the app is open on screen (the app shows its own). Emails are sent either way.
 - Reminders sent by the server: task starting soon, task not started, return-from-pause reminders, a morning message (default 8:00), an evening review (default 20:00), a weekly summary (Sunday 19:00) and a monthly report (1st, 09:00). Each person can change or switch these off in Settings. They respect quiet hours and the person's time zone. Hourly check-ins still only appear inside the open app.
 - The AI Coach (and "Ask AI to change") works through the same server function. It stays hidden until you add the `AI_API_KEY` secret (see below). Each person gets 60 AI calls a day (`COACH_DAILY` secret changes it).
+
+
+## What arrives as a phone alert
+Start-time and 'get back to it' reminders, the morning message (with the day's Motivation or Bible verse), hourly/2-hourly/3-hourly check-ins, evening review, weekly and monthly reports, and plan news. Quiet hours (default 22:00 to 07:00) hold back everything except start-time reminders and pause returns. Each person must tap 'turn on phone alerts' on their own phone once.

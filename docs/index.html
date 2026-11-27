@@ -313,11 +313,10 @@ function dailyMessage() {
   var L = pref === 'bible' ? VERSES : MOTIV, date = todayStr();
   var rec = d.msgSeen[pref] = d.msgSeen[pref] || { used: [], byDate: {} };
   if (rec.byDate[date] !== undefined && L[rec.byDate[date]]) return L[rec.byDate[date]];
-  var pool = L.map(function (_, i) { return i; }).filter(function (i) { return rec.used.indexOf(i) < 0; });
-  if (!pool.length) { rec.used = []; pool = L.map(function (_, i) { return i; }); }
+  var pool = L.map(function (_, i) { return i; });
   var ci = d.checkins[date];
   if (ci && ci.energy === 'low') { var g = pool.filter(function (i) { return L[i].g; }); if (g.length) pool = g; }
-  var i = pool[Math.floor(Math.random() * pool.length)];
+  var i = pool[Math.floor(Date.parse(date + 'T00:00:00Z') / 86400000) % pool.length];
   rec.used.push(i); rec.byDate[date] = i; save();
   return L[i];
 }

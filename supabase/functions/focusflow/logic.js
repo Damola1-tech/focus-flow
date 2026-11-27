@@ -52,6 +52,50 @@ export function dueReminders({ core, tasks, nowMs }) {
 // Settings: morningAt ('' = off, default 08:00), eveningAt ('' = off, default 20:00), weekly (default on).
 const addDay = (date, n) => new Date(Date.parse(date + 'T00:00:00Z') + n * 86400000).toISOString().slice(0, 10);
 const WINDOW = 10;
+export const MOTIV = [
+  { t: 'Small steps, repeated daily, build a life you can be proud of.' },
+  { t: 'Start with the next small thing. The rest gets easier once you have begun.', g: 1 },
+  { t: 'A plan only matters when you follow through. Today is your chance.' },
+  { t: 'Progress counts even when it is slow. Keep going.' },
+  { t: 'Rest is part of the work. Plan it like any other task.', g: 1 },
+  { t: 'You do not have to do everything today. Do the important things well.', g: 1 },
+  { t: 'Show up for the task, not for the mood. The mood often follows.' },
+  { t: 'Finish what you start, then choose what to start next.' },
+  { t: 'Be honest about your time, and your time will start working for you.' },
+  { t: 'One focused hour beats a distracted day.' },
+  { t: 'Missed a day? Begin again today. That is all discipline really is.', g: 1 },
+  { t: 'Your big goals are built from the tasks you finish today.' }
+];
+export const VERSES = [
+  { t: 'Commit thy works unto the LORD, and thy thoughts shall be established.', r: 'Proverbs 16:3', g: 1 },
+  { t: 'I can do all things through Christ which strengtheneth me.', r: 'Philippians 4:13' },
+  { t: 'Have not I commanded thee? Be strong and of a good courage; be not afraid, neither be thou dismayed: for the LORD thy God is with thee whithersoever thou goest.', r: 'Joshua 1:9', g: 1 },
+  { t: 'But they that wait upon the LORD shall renew their strength; they shall mount up with wings as eagles; they shall run, and not be weary; and they shall walk, and not faint.', r: 'Isaiah 40:31', g: 1 },
+  { t: 'And whatsoever ye do, do it heartily, as to the Lord, and not unto men.', r: 'Colossians 3:23' },
+  { t: 'So teach us to number our days, that we may apply our hearts unto wisdom.', r: 'Psalm 90:12' },
+  { t: 'And let us not be weary in well doing: for in due season we shall reap, if we faint not.', r: 'Galatians 6:9' },
+  { t: 'The thoughts of the diligent tend only to plenteousness.', r: 'Proverbs 21:5' },
+  { t: 'To every thing there is a season, and a time to every purpose under the heaven.', r: 'Ecclesiastes 3:1', g: 1 },
+  { t: 'This is the day which the LORD hath made; we will rejoice and be glad in it.', r: 'Psalm 118:24' },
+  { t: 'Fear thou not; for I am with thee: be not dismayed; for I am thy God: I will strengthen thee; yea, I will help thee.', r: 'Isaiah 41:10', g: 1 },
+  { t: 'In all labour there is profit.', r: 'Proverbs 14:23' },
+  { t: 'Be ye stedfast, unmoveable, always abounding in the work of the Lord, forasmuch as ye know that your labour is not in vain in the Lord.', r: '1 Corinthians 15:58' }
+];
+
+export const dayNo = (date) => Math.floor(Date.parse(date + 'T00:00:00Z') / 86400000);
+// Same pick as the app: one message per day, the gentle ones on a low-energy day.
+export function messageFor(core, date) {
+  const pref = ((core && core.settings) || {}).message || 'motivation';
+  if (pref === 'none') return null;
+  const L = pref === 'bible' ? VERSES : MOTIV, seen = core && core.msgSeen && core.msgSeen[pref] && core.msgSeen[pref].byDate;
+  if (seen && seen[date] !== undefined && L[seen[date]]) return L[seen[date]];
+  let pool = L.map((_, i) => i);
+  const ci = core && core.checkins && core.checkins[date];
+  if (ci && ci.energy === 'low') { const g = pool.filter((i) => L[i].g); if (g.length) pool = g; }
+  return L[pool[dayNo(date) % pool.length]];
+}
+const msgText = (m) => m.t + (m.r ? ` (${m.r}, KJV)` : '');
+
 export function dueNudges({ core, tasks, nowMs }) {
   const out = [], s = (core && core.settings) || {};
   const { date, min } = localNow(nowMs, s.tz);
@@ -63,9 +107,13 @@ export function dueNudges({ core, tasks, nowMs }) {
   if (morning && inWin(morning)) {
     const td = list.filter((t) => t.date === date && (t.status === 'todo' || t.status === 'doing')).sort((a, b) => String(a.time || '99').localeCompare(String(b.time || '99')));
     const first = td.find((t) => t.time);
-    out.push({ key: `n:am:${date}`, title: 'Good morning', body: td.length
+    const dm = messageFor(core, date);
+    out.push({ key: `n:am:${date}`, title: 'Good morning', body: (td.length
       ? `${td.length} task${td.length > 1 ? 's' : ''} planned today${first ? `, the first at ${fmt12(first.time)}` : ''}. Open Focus Flow to check in on your energy.`
-      : 'Nothing is planned for today yet. Take a minute to add your most important task.' });
+      : 'Nothing is planned for today yet. Take a minute to add your most important task.') + (dm ? `\n\n${msgText(dm)}` : '') });
+  } else if (!morning && s.message !== 'none') {
+    const at = '08:00', dm = messageFor(core, date);
+    if (dm && inWin(at)) out.push({ key: `n:msg:${date}`, title: 'Today\'s message', body: msgText(dm) });
   }
   if (evening && inWin(evening)) {
     const today = list.filter((t) => t.date === date && t.status !== 'cancelled'), done = today.filter((t) => t.status === 'done').length;
@@ -111,4 +159,24 @@ export function planEvents({ rows, plans, names, nowMs, windowMs = 10 * 60 * 100
     }
   }
   return out;
+}
+
+// Hourly (or every 2-3 h) check-in on the day. Mirrors the in-app one: from 08:00, first 5 minutes of each slot.
+export function dueCheckins({ core, tasks, nowMs }) {
+  const s = (core && core.settings) || {}, every = +s.checkinEvery || 0;
+  if (!(every > 0)) return [];
+  const { date, min } = localNow(nowMs, s.tz);
+  if (min < 480 || inQuiet(s, min)) return [];
+  const slot = Math.floor(min / every);
+  if (min - slot * every >= 5) return [];
+  const a = core && core.active, list = tasks || [];
+  const cur = a && list.find((t) => t && t.id === a.taskId);
+  const key = `c:${date}:${slot}`;
+  if (a && cur) {
+    const sec = (a.accSec || 0) + (a.state === 'running' && a.lastTick ? Math.max(0, (nowMs - a.lastTick) / 1000) : 0), m = Math.max(1, Math.round(sec / 60));
+    const so = m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`;
+    return [{ key, title: 'Check-in', body: `How is "${cur.title}" going? ${so} so far.` }];
+  }
+  const nxt = list.filter((t) => t && t.date === date && t.status === 'todo').sort((x, y) => String(x.time || '99').localeCompare(String(y.time || '99')))[0];
+  return nxt ? [{ key, title: 'Check-in', body: `Next on your list is "${nxt.title}". Ready to start?` }] : [];
 }

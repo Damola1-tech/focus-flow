@@ -108,7 +108,7 @@ ok('t1 test alert reaches phone and email', x.sent === 2 && w.sentMail.length ==
   w2.subs.u1 = [{ endpoint: 'e1', sub: { endpoint: 'e1' } }];
   await runCron(w2.deps, AM); await runCron(w2.deps, AM + 60000); await runCron(w2.deps, AM + 120000);
   ok('k20 morning message is sent exactly once across the window', w2.sentPush.filter((x) => x.title === 'Good morning').length === 1, w2.sentPush);
-  const w3 = world(); w3.put('data/users/u1/core', core({ morningAt: '' })); w3.subs.u1 = [{ endpoint: 'e1', sub: { endpoint: 'e1' } }];
+  const w3 = world(); w3.put('data/users/u1/core', core({ morningAt: '', message: 'none' })); w3.subs.u1 = [{ endpoint: 'e1', sub: { endpoint: 'e1' } }];
   await runCron(w3.deps, AM);
   ok('k21 nothing is sent when the morning message is off', w3.sentPush.length === 0, w3.sentPush);
 }

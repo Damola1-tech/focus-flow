@@ -35,7 +35,7 @@ let n = dueNudges({ core: core(), tasks: [T('a', '2026-11-24', 'todo', '09:30'),
 ok('n1 morning message at 08:00 window with count and first time', n.length === 1 && n[0].key === 'n:am:2026-11-24' && /2 tasks/.test(n[0].body) && /9:30 AM/.test(n[0].body), n);
 ok('n2 not before the window', dueNudges({ core: core(), tasks: [], nowMs: atD(2026, 11, 24, 7, 59) }).length === 0);
 ok('n3 not after the 10 minute window', dueNudges({ core: core(), tasks: [], nowMs: atD(2026, 11, 24, 8, 11) }).length === 0);
-ok('n4 morning can be switched off', dueNudges({ core: core({ morningAt: '' }), tasks: [], nowMs: atD(2026, 11, 24, 8, 3) }).length === 0);
+ok('n4 morning can be switched off', dueNudges({ core: core({ morningAt: '', message: 'none' }), tasks: [], nowMs: atD(2026, 11, 24, 8, 3) }).length === 0);
 ok('n5 empty day still nudges', /Nothing is planned/.test(dueNudges({ core: core(), tasks: [], nowMs: atD(2026, 11, 24, 8, 3) })[0].body));
 n = dueNudges({ core: core(), tasks: [T('a', '2026-11-24', 'done'), T('b', '2026-11-24', 'todo'), T('c', '2026-11-24', 'cancelled'), T('d', '2026-11-25')], nowMs: atD(2026, 11, 24, 20, 5) });
 ok('n6 evening review counts done of planned (cancelled ignored) and tomorrow', n.length === 1 && /1 of 2/.test(n[0].body) && /1 planned for tomorrow/.test(n[0].body), n);
@@ -51,3 +51,33 @@ ok('n12 monthly across a year end', dueNudges({ core: core(), tasks: [T('a', '20
 ok('n13 same key for the whole window (sent once)', dueNudges({ core: core(), tasks: [], nowMs: atD(2026, 11, 24, 8, 1) })[0].key === dueNudges({ core: core(), tasks: [], nowMs: atD(2026, 11, 24, 8, 9) })[0].key);
 ok('n14 bad time zone does not crash', Array.isArray(dueNudges({ core: core({ tz: 'Nope/Zone' }), tasks: [], nowMs: atD(2026, 11, 24, 8, 3) })));
 console.log('FAILS:', fails); process.exit(fails ? 1 : 0);
+
+// ---- daily message and check-ins on the phone ----
+{
+  const { messageFor, dueCheckins, MOTIV, VERSES } = await import('../supabase/functions/focusflow/logic.js');
+  const fs = await import('fs'); const src = fs.readFileSync(new URL('../src/10-main.js', import.meta.url), 'utf8');
+  const grab = (n) => eval('(' + src.slice(src.indexOf('var ' + n + ' = [') + ('var ' + n + ' = ').length, src.indexOf('];', src.indexOf('var ' + n + ' = [')) + 1) + ')');
+  ok('m1 server message lists match the app', JSON.stringify(grab('MOTIV')) === JSON.stringify(MOTIV) && JSON.stringify(grab('VERSES')) === JSON.stringify(VERSES));
+  const c0 = { settings: { message: 'bible' } };
+  ok('m2 message is the same all day and changes by day', messageFor(c0, '2026-11-27').t === messageFor(c0, '2026-11-27').t && messageFor(c0, '2026-11-27').t !== messageFor(c0, '2026-11-28').t);
+  ok('m3 bible has a reference, motivation not', messageFor(c0, '2026-11-27').r && !messageFor({ settings: { message: 'motivation' } }, '2026-11-27').r);
+  ok('m4 none gives nothing', messageFor({ settings: { message: 'none' } }, '2026-11-27') === null);
+  ok('m5 low energy picks a gentle one', messageFor({ settings: { message: 'motivation' }, checkins: { '2026-11-27': { energy: 'low' } } }, '2026-11-27').g === 1);
+  ok('m6 message already seen in the app wins', messageFor({ settings: { message: 'motivation' }, msgSeen: { motivation: { byDate: { '2026-11-27': 3 } } } }, '2026-11-27').t === MOTIV[3].t);
+  const mn = dueNudges({ core: { settings: { message: 'bible' } }, tasks: [], nowMs: atD(2026, 11, 27, 8, 2) });
+  ok('m7 morning phone alert carries the verse', mn.length === 1 && /KJV/.test(mn[0].body), mn);
+  const sm = dueNudges({ core: { settings: { message: 'motivation', morningAt: '' } }, tasks: [], nowMs: atD(2026, 11, 27, 8, 2) });
+  ok('m8 message still sent alone when the morning summary is off', sm.length === 1 && sm[0].key === 'n:msg:2026-11-27', sm);
+  ok('m9 no message at all when set to none and morning off', dueNudges({ core: { settings: { message: 'none', morningAt: '' } }, tasks: [], nowMs: atD(2026, 11, 27, 8, 2) }).length === 0);
+  const ck = (core, h, m, tasks) => dueCheckins({ core, tasks: tasks || [T('a', '2026-11-27', 'todo')], nowMs: atD(2026, 11, 27, h, m) });
+  const cc = { settings: { checkinEvery: 60 } };
+  ok('c1 check-in names the next task', ck(cc, 10, 2).length === 1 && /Next on your list/.test(ck(cc, 10, 2)[0].body), ck(cc, 10, 2));
+  ok('c2 off when set to 0', ck({ settings: { checkinEvery: 0 } }, 10, 2).length === 0);
+  ok('c3 not outside the first 5 minutes of the slot', ck(cc, 10, 7).length === 0);
+  ok('c4 not before 08:00', ck(cc, 7, 2).length === 0);
+  ok('c5 not in quiet hours', ck({ settings: { checkinEvery: 60, quietFrom: '09:00', quietTo: '12:00' } }, 10, 2).length === 0);
+  ok('c6 same key all through the slot', ck(cc, 10, 1)[0].key === ck(cc, 10, 4)[0].key);
+  const act = { settings: { checkinEvery: 60 }, active: { taskId: 'a', state: 'running', accSec: 600, lastTick: atD(2026, 11, 27, 10, 0) } };
+  ok('c7 check-in on the running task shows time so far', /"a|\\"/.test(ck(act, 10, 2)[0].body) && /12 min/.test(ck(act, 10, 2)[0].body), ck(act, 10, 2));
+  ok('c8 nothing when nothing is left to do', ck(cc, 10, 2, []).length === 0);
+}
